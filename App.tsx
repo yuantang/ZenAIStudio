@@ -13,9 +13,7 @@ import {
   Zap,
   Leaf,
   MessageSquare,
-  AlertCircle,
-  Settings,
-  ExternalLink
+  AlertCircle
 } from 'lucide-react';
 import { 
   GenerationStatus, 
@@ -45,25 +43,10 @@ const App: React.FC = () => {
   const [result, setResult] = useState<MeditationResult | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>([]);
   
-  // 安全检查 API KEY
-  const getApiKey = () => {
-    try {
-      // @ts-ignore
-      return process.env.API_KEY;
-    } catch {
-      return undefined;
-    }
-  };
-  
-  const [hasApiKey, setHasApiKey] = useState(!!getApiKey() && getApiKey() !== 'YOUR_API_KEY');
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  useEffect(() => {
-    const key = getApiKey();
-    setHasApiKey(!!key && key !== 'YOUR_API_KEY');
-  }, []);
-
+  // 轮播加载文案
   useEffect(() => {
     let interval: number;
     if (status !== GenerationStatus.IDLE && status !== GenerationStatus.COMPLETED && status !== GenerationStatus.ERROR) {
@@ -113,10 +96,6 @@ const App: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!theme) return;
-    if (!hasApiKey) {
-      alert("检测到 API_KEY 未配置。请在 Vercel 控制台的项目设置中添加名为 API_KEY 的环境变量并重新部署。");
-      return;
-    }
     try {
       const res = await processSingleItem(theme);
       setResult(res);
@@ -151,20 +130,6 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
-      {/* API Key 警告横幅 - 仅在未配置时显示 */}
-      {!hasApiKey && (
-        <div className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-3 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-xl">
-          <Settings className="w-4 h-4 animate-spin-slow" /> 
-          <span>
-            {"检测到 API_KEY 未设置。请前往 Vercel 控制台 → Settings → Environment Variables 添加 "}
-            <b>API_KEY</b>
-          </span>
-          <a href="https://vercel.com/docs/projects/environment-variables" target="_blank" className="underline flex items-center gap-1 opacity-80 hover:opacity-100">
-            查看帮助 <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      )}
-
       {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] overflow-hidden">
         <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 rounded-full blur-[100px] breathing-glow"></div>
@@ -352,7 +317,7 @@ const App: React.FC = () => {
               {/* 剧本预览 */}
               <div className="mt-12 glass p-10 md:p-16 rounded-[3rem] border border-white/40 shadow-sm">
                 <h4 className="text-[10px] font-black text-slate-300 mb-10 flex items-center uppercase tracking-[0.4em]">
-                  <Wind className="w-4 h-4 mr-3 text-indigo-500" /> 引导词预览 / Script
+                  <Wind className="w-4 h-4 mr-3 text-indigo-500" /> 剧本细节 / Script
                 </h4>
                 <div className="space-y-10">
                   {result.script.sections.map((section, idx) => (

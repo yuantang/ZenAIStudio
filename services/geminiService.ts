@@ -15,15 +15,14 @@ function decodeBase64(base64: string): Uint8Array {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * 核心脚本生成器：利用 Gemini 生成具备临床深度和艺术美感的冥想剧本
- * 包含重试逻辑以增强稳定性
+ * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美美的冥想剧本
  */
 export const generateMeditationScript = async (theme: string, retries = 2): Promise<MeditationScript> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏：\n\n主题：${theme}`,
       config: {
         systemInstruction: SYSTEM_PROMPT,
@@ -50,7 +49,9 @@ export const generateMeditationScript = async (theme: string, retries = 2): Prom
       }
     });
 
-    return JSON.parse(response.text.trim());
+    const text = response.text;
+    if (!text) throw new Error("Empty response from model");
+    return JSON.parse(text.trim());
   } catch (error) {
     if (retries > 0) {
       console.warn(`脚本生成失败，正在进行重试... 剩余次数: ${retries}`);
@@ -65,10 +66,7 @@ export const generateMeditationScript = async (theme: string, retries = 2): Prom
  * 合成大师级冥想语音 (High-Fidelity TTS)
  */
 export const synthesizeSpeech = async (text: string, voiceName: string, retries = 2): Promise<Uint8Array> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key is not configured.");
-
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const targetVoice = voiceName || 'Zephyr';
 
   try {
