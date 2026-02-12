@@ -9,15 +9,13 @@ import {
   Pause, 
   RefreshCw,
   History,
-  Music,
   ShieldCheck,
   Zap,
   Leaf,
-  UserCheck,
-  Star,
   MessageSquare,
   AlertCircle,
-  Settings
+  Settings,
+  ExternalLink
 } from 'lucide-react';
 import { 
   GenerationStatus, 
@@ -46,22 +44,28 @@ const App: React.FC = () => {
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [result, setResult] = useState<MeditationResult | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>([]);
-  const [hasApiKey, setHasApiKey] = useState(true);
   
+  // 安全检查 API KEY
+  const getApiKey = () => {
+    try {
+      return process.env.API_KEY;
+    } catch {
+      return undefined;
+    }
+  };
+  
+  const [hasApiKey, setHasApiKey] = useState(!!getApiKey() && getApiKey() !== 'YOUR_API_KEY');
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // 检查 API KEY 是否配置 (Vercel 环境)
   useEffect(() => {
-    if (!process.env.API_KEY || process.env.API_KEY === 'YOUR_API_KEY') {
-      setHasApiKey(false);
-    }
+    const key = getApiKey();
+    setHasApiKey(!!key && key !== 'YOUR_API_KEY');
   }, []);
 
-  // 轮播加载文案
   useEffect(() => {
     let interval: number;
-    if (status !== GenerationStatus.IDLE && status !== GenerationStatus.COMPLETED) {
+    if (status !== GenerationStatus.IDLE && status !== GenerationStatus.COMPLETED && status !== GenerationStatus.ERROR) {
       interval = window.setInterval(() => {
         setLoadingMsgIdx(prev => (prev + 1) % LOADING_MESSAGES.length);
       }, 3500);
@@ -109,7 +113,7 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (!theme) return;
     if (!hasApiKey) {
-      alert("请在 Vercel 环境变量中配置 API_KEY 以使用此功能。");
+      alert("检测到 API_KEY 未配置。请在 Vercel 控制台的项目设置中添加名为 API_KEY 的环境变量并重新部署。");
       return;
     }
     try {
@@ -146,10 +150,14 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
-      {/* 环境变量检查横幅 */}
+      {/* API Key 警告横幅 - 仅在未配置时显示 */}
       {!hasApiKey && (
-        <div className="fixed top-0 left-0 w-full bg-amber-500 text-white py-2 px-4 z-50 flex items-center justify-center text-xs font-bold gap-2">
-          <Settings className="w-4 h-4" /> 检测到 API_KEY 未配置，请在 Vercel 控制台 Environment Variables 中添加 API_KEY。
+        <div className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-3 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-xl">
+          <Settings className="w-4 h-4 animate-spin-slow" /> 
+          <span>检测到 API_KEY 未设置。请前往 Vercel 控制台 -> Settings -> Environment Variables 添加 <b>API_KEY</b></span>
+          <a href="https://vercel.com/docs/projects/environment-variables" target="_blank" className="underline flex items-center gap-1 opacity-80 hover:opacity-100">
+            查看帮助 <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       )}
 
@@ -172,9 +180,9 @@ const App: React.FC = () => {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-        {/* 左侧控制台 */}
+        {/* 控制台 */}
         <div className="lg:col-span-5 space-y-8 order-2 lg:order-1">
-          <div className="glass p-8 md:p-12 rounded-[3rem] shadow-xl shadow-slate-200/40">
+          <div className="glass p-8 md:p-12 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-white/50">
             <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center">
               <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
             </h2>
@@ -198,7 +206,7 @@ const App: React.FC = () => {
                 </div>
 
                 <textarea
-                  className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 text-slate-700 placeholder:text-slate-300 text-sm"
+                  className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 text-slate-700 placeholder:text-slate-300 text-sm shadow-inner"
                   rows={3}
                   placeholder="用您最舒适的语言描述冥想目标..."
                   value={theme}
@@ -242,7 +250,7 @@ const App: React.FC = () => {
                         onClick={() => setSelectedBG(t.id)}
                         className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
                           selectedBG === t.id 
-                          ? 'bg-indigo-50 border-indigo-200' 
+                          ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
                           : 'bg-white/40 border-slate-50 hover:border-indigo-100'
                         }`}
                       >
@@ -260,8 +268,8 @@ const App: React.FC = () => {
                   onClick={handleGenerate}
                   className={`w-full py-5 rounded-full font-bold text-md shadow-lg flex items-center justify-center transition-all ${
                     status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED || status === GenerationStatus.ERROR
-                    ? 'bg-slate-900 text-white hover:bg-black hover:-translate-y-0.5' 
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    ? 'bg-slate-900 text-white hover:bg-black hover:-translate-y-0.5 shadow-slate-300' 
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
                   }`}
                 >
                   {status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED || status === GenerationStatus.ERROR ? (
@@ -279,30 +287,30 @@ const App: React.FC = () => {
                     {LOADING_MESSAGES[loadingMsgIdx]}
                   </p>
                   <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500 transition-all duration-700 ease-out" style={{ width: `${progress}%` }} />
+                    <div className="h-full bg-indigo-500 transition-all duration-700 ease-out shadow-[0_0_8px_rgba(79,70,229,0.4)]" style={{ width: `${progress}%` }} />
                   </div>
                 </div>
               )}
 
               {status === GenerationStatus.ERROR && (
-                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium">
-                  <AlertCircle className="w-4 h-4 mr-2" /> 生成遇到一点小状况，请重试
+                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100 animate-bounce">
+                  <AlertCircle className="w-4 h-4 mr-2" /> 生成遇到一点小状况，请检查网络或重试
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* 右侧展示区 */}
+        {/* 展示区 */}
         <div className="lg:col-span-7 space-y-12 order-1 lg:order-2">
           {result ? (
             <div className="animate-in fade-in zoom-in-95 duration-700">
-              <div className="glass p-12 md:p-20 rounded-[4rem] shadow-xl relative overflow-hidden bg-white/40">
-                <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/20"></div>
+              <div className="glass p-12 md:p-20 rounded-[4rem] shadow-xl relative overflow-hidden bg-white/40 border border-white/60">
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 to-teal-400"></div>
                 
                 <div className="flex flex-col items-center">
                   <div className="relative mb-12">
-                    <div className={`absolute -inset-10 bg-indigo-500/5 rounded-full blur-[60px] transition-all duration-1000 ${isPlaying ? 'opacity-100 scale-125' : 'opacity-0 scale-90'}`}></div>
+                    <div className={`absolute -inset-10 bg-indigo-500/5 rounded-full blur-[60px] transition-all duration-1000 ${isPlaying ? 'opacity-100 scale-125 animate-pulse' : 'opacity-0 scale-90'}`}></div>
                     <button 
                       onClick={togglePlay}
                       className="relative w-36 h-36 md:w-44 md:h-44 bg-slate-900 rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all group overflow-hidden"
@@ -311,7 +319,7 @@ const App: React.FC = () => {
                     </button>
                   </div>
                   
-                  <h3 className="text-3xl md:text-5xl font-serif font-bold text-slate-900 mb-6 tracking-tight text-center">{result.script.title}</h3>
+                  <h3 className="text-3xl md:text-5xl font-serif font-bold text-slate-900 mb-6 tracking-tight text-center px-4 leading-tight">{result.script.title}</h3>
                   <div className="flex items-center space-x-2 text-slate-400 mb-10">
                     <Leaf className="w-3.5 h-3.5 text-teal-400" />
                     <span className="text-[10px] font-bold tracking-[0.1em] uppercase">Healing Journey Active</span>
@@ -338,17 +346,17 @@ const App: React.FC = () => {
               </div>
 
               {/* 剧本预览 */}
-              <div className="mt-12 glass p-10 md:p-16 rounded-[3rem]">
+              <div className="mt-12 glass p-10 md:p-16 rounded-[3rem] border border-white/40 shadow-sm">
                 <h4 className="text-[10px] font-black text-slate-300 mb-10 flex items-center uppercase tracking-[0.4em]">
                   <Wind className="w-4 h-4 mr-3 text-indigo-500" /> 引导词预览 / Script
                 </h4>
                 <div className="space-y-10">
                   {result.script.sections.map((section, idx) => (
-                    <div key={idx} className="relative pl-8 border-l border-slate-100">
-                      <div className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-slate-200"></div>
+                    <div key={idx} className="relative pl-8 border-l-2 border-slate-100 hover:border-indigo-200 transition-colors">
+                      <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-slate-200 border-2 border-white"></div>
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">{section.type}</span>
-                        <span className="text-[9px] text-slate-300 italic">静默 {section.pauseSeconds}s</span>
+                        <span className="text-[9px] text-slate-300 italic font-medium">静默 {section.pauseSeconds}s</span>
                       </div>
                       <p className="text-slate-500 text-lg leading-relaxed font-light italic">
                         “{section.content}”
@@ -359,12 +367,13 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="h-[500px] md:h-[650px] flex flex-col items-center justify-center p-12 bg-white/10 rounded-[4rem] border-2 border-dashed border-slate-100/60 animate-in fade-in duration-1000">
-              <div className="w-20 h-20 bg-white/80 rounded-full flex items-center justify-center shadow-sm mb-8">
-                <Volume2 className="w-8 h-8 text-slate-200" />
+            <div className="h-[500px] md:h-[650px] flex flex-col items-center justify-center p-12 bg-white/5 rounded-[4rem] border-2 border-dashed border-slate-200/50 animate-in fade-in duration-1000">
+              <div className="w-20 h-20 bg-white/80 rounded-full flex items-center justify-center shadow-sm mb-8 relative">
+                <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-20"></div>
+                <Volume2 className="w-8 h-8 text-slate-300" />
               </div>
               <h3 className="text-2xl font-serif font-bold text-slate-400 mb-4 tracking-tight">静候佳音</h3>
-              <p className="text-slate-300 max-w-xs text-center leading-relaxed text-sm font-light">
+              <p className="text-slate-400/60 max-w-xs text-center leading-relaxed text-sm font-light">
                 请输入您的冥想意图，ZenAI 将为您编织一段专属的深度放松之旅。
               </p>
             </div>
@@ -381,11 +390,11 @@ const App: React.FC = () => {
                   <div 
                     key={item.id} 
                     onClick={() => setResult(item)}
-                    className="p-6 bg-white/40 border border-white rounded-[2rem] hover:bg-white hover:shadow-xl transition-all cursor-pointer group flex items-center justify-between"
+                    className="p-6 bg-white/40 border border-white rounded-[2rem] hover:bg-white hover:shadow-xl transition-all cursor-pointer group flex items-center justify-between shadow-sm"
                   >
                     <div className="max-w-[70%]">
                       <h5 className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors truncate">{item.script.title}</h5>
-                      <p className="text-[9px] text-slate-400 mt-1 uppercase">{new Date(item.createdAt).toLocaleDateString()}</p>
+                      <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">{new Date(item.createdAt).toLocaleDateString()}</p>
                     </div>
                     <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-200 group-hover:bg-indigo-50 group-hover:text-indigo-400 transition-all">
                       <Play className="w-4 h-4 fill-current" />
@@ -398,7 +407,7 @@ const App: React.FC = () => {
         </div>
       </div>
       
-      <footer className="mt-24 text-center text-slate-300 text-[10px] font-medium tracking-[0.1em] uppercase">
+      <footer className="mt-24 text-center text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase pb-10 opacity-60">
         © 2025 ZenAI Studio • Powered by Google Gemini 2.5 Flash
       </footer>
     </div>
