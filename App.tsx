@@ -16,7 +16,8 @@ import {
   UserCheck,
   Star,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import { 
   GenerationStatus, 
@@ -45,9 +46,17 @@ const App: React.FC = () => {
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [result, setResult] = useState<MeditationResult | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>([]);
+  const [hasApiKey, setHasApiKey] = useState(true);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // 检查 API KEY 是否配置 (Vercel 环境)
+  useEffect(() => {
+    if (!process.env.API_KEY || process.env.API_KEY === 'YOUR_API_KEY') {
+      setHasApiKey(false);
+    }
+  }, []);
 
   // 轮播加载文案
   useEffect(() => {
@@ -99,6 +108,10 @@ const App: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!theme) return;
+    if (!hasApiKey) {
+      alert("请在 Vercel 环境变量中配置 API_KEY 以使用此功能。");
+      return;
+    }
     try {
       const res = await processSingleItem(theme);
       setResult(res);
@@ -133,6 +146,13 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
+      {/* 环境变量检查横幅 */}
+      {!hasApiKey && (
+        <div className="fixed top-0 left-0 w-full bg-amber-500 text-white py-2 px-4 z-50 flex items-center justify-center text-xs font-bold gap-2">
+          <Settings className="w-4 h-4" /> 检测到 API_KEY 未配置，请在 Vercel 控制台 Environment Variables 中添加 API_KEY。
+        </div>
+      )}
+
       {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] overflow-hidden">
         <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 rounded-full blur-[100px] breathing-glow"></div>
