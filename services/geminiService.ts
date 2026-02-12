@@ -15,14 +15,20 @@ function decodeBase64(base64: string): Uint8Array {
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美美的冥想剧本
+ * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美感的冥想剧本
  */
 export const generateMeditationScript = async (theme: string, retries = 2): Promise<MeditationScript> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // 延迟初始化，确保 process.env.API_KEY 已注入
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY 尚未配置。请点击顶部的“配置密钥”按钮或在环境变量中设置。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-pro-preview', // 升级为 Pro 以获得更深度的剧本创作能力
       contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏：\n\n主题：${theme}`,
       config: {
         systemInstruction: SYSTEM_PROMPT,
@@ -50,11 +56,11 @@ export const generateMeditationScript = async (theme: string, retries = 2): Prom
     });
 
     const text = response.text;
-    if (!text) throw new Error("Empty response from model");
+    if (!text) throw new Error("模型未返回有效内容");
     return JSON.parse(text.trim());
   } catch (error) {
     if (retries > 0) {
-      console.warn(`脚本生成失败，正在进行重试... 剩余次数: ${retries}`);
+      console.warn(`脚本生成失败，正在重试... 剩余次数: ${retries}`);
       await wait(2000);
       return generateMeditationScript(theme, retries - 1);
     }
@@ -66,7 +72,12 @@ export const generateMeditationScript = async (theme: string, retries = 2): Prom
  * 合成大师级冥想语音 (High-Fidelity TTS)
  */
 export const synthesizeSpeech = async (text: string, voiceName: string, retries = 2): Promise<Uint8Array> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY 尚未配置。");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const targetVoice = voiceName || 'Zephyr';
 
   try {
@@ -88,13 +99,13 @@ export const synthesizeSpeech = async (text: string, voiceName: string, retries 
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) {
-      throw new Error("TTS 引擎未能返回有效音频流。");
+      throw new Error("TTS 引擎未能返回音频数据。");
     }
 
     return decodeBase64(base64Audio);
   } catch (error) {
     if (retries > 0) {
-      console.warn(`TTS 合成失败，正在进行重试...`);
+      console.warn(`TTS 合成失败，正在重试...`);
       await wait(1500);
       return synthesizeSpeech(text, voiceName, retries - 1);
     }

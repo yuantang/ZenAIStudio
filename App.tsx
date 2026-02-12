@@ -13,7 +13,8 @@ import {
   Zap,
   Leaf,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import { 
   GenerationStatus, 
@@ -43,11 +44,20 @@ const App: React.FC = () => {
   const [result, setResult] = useState<MeditationResult | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>([]);
   
+  // 密钥状态管理
+  const [hasApiKey, setHasApiKey] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // 轮播加载文案
+  // 检测密钥并轮播加载文案
   useEffect(() => {
+    // 检查 process.env 是否存在且 API_KEY 是否有效
+    const checkKey = () => {
+      const key = process.env.API_KEY;
+      setHasApiKey(!!key && key !== 'YOUR_API_KEY');
+    };
+    checkKey();
+
     let interval: number;
     if (status !== GenerationStatus.IDLE && status !== GenerationStatus.COMPLETED && status !== GenerationStatus.ERROR) {
       interval = window.setInterval(() => {
@@ -56,6 +66,17 @@ const App: React.FC = () => {
     }
     return () => clearInterval(interval);
   }, [status]);
+
+  const handleOpenKeyDialog = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      // 这里的 API_KEY 会被自动注入，重新检测即可
+      const key = process.env.API_KEY;
+      setHasApiKey(!!key);
+    } else {
+      alert("请在 Vercel 环境变量中配置 API_KEY，然后点击 Redeploy 重新部署。");
+    }
+  };
 
   const processSingleItem = async (currentTheme: string) => {
     setStatus(GenerationStatus.WRITING);
@@ -96,13 +117,18 @@ const App: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!theme) return;
+    if (!hasApiKey) {
+      handleOpenKeyDialog();
+      return;
+    }
     try {
       const res = await processSingleItem(theme);
       setResult(res);
       setHistory(prev => [res, ...prev]);
       setStatus(GenerationStatus.COMPLETED);
-    } catch (e) {
+    } catch (e: any) {
       console.error("生成异常:", e);
+      alert(e.message || "生成失败，请重试。");
       setStatus(GenerationStatus.ERROR);
     }
   };
@@ -130,6 +156,20 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
+      {/* 密钥配置警告 - 仅在缺失时显示 */}
+      {!hasApiKey && (
+        <div className="fixed top-0 left-0 w-full bg-amber-500 text-white py-2 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-lg animate-in slide-in-from-top duration-500">
+          <AlertCircle className="w-4 h-4" /> 
+          检测到 API_KEY 尚未生效。如果您已在 Vercel 配置，请点击右侧按钮。
+          <button 
+            onClick={handleOpenKeyDialog}
+            className="bg-white text-amber-600 px-3 py-1 rounded-md hover:bg-amber-50 transition-colors flex items-center gap-1"
+          >
+            <Settings className="w-3 h-3" /> 激活密钥
+          </button>
+        </div>
+      )}
+
       {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] overflow-hidden">
         <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 rounded-full blur-[100px] breathing-glow"></div>
@@ -144,7 +184,7 @@ const App: React.FC = () => {
           ZenAI Studio
         </h1>
         <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed px-4">
-          由 Gemini 2.5 Flash 驱动的深度冥想创作系统。<br className="hidden md:block" />为您定制绝对稳定的疗愈频率。
+          由 Gemini 3 Pro 驱动的深度冥想创作系统。<br className="hidden md:block" />为您定制绝对稳定的疗愈频率。
         </p>
       </header>
 
@@ -152,8 +192,11 @@ const App: React.FC = () => {
         {/* 控制台 */}
         <div className="lg:col-span-5 space-y-8 order-2 lg:order-1">
           <div className="glass p-8 md:p-12 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-white/50">
-            <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center">
-              <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
+            <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center justify-between">
+              <span className="flex items-center">
+                <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
+              </span>
+              <div className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'}`} title={hasApiKey ? "密钥已连接" : "密钥待激活"}></div>
             </h2>
             
             <div className="space-y-8">
@@ -262,8 +305,8 @@ const App: React.FC = () => {
               )}
 
               {status === GenerationStatus.ERROR && (
-                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100 animate-bounce">
-                  <AlertCircle className="w-4 h-4 mr-2" /> 生成遇到一点小状况，请检查网络或重试
+                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100">
+                  <AlertCircle className="w-4 h-4 mr-2" /> 生成异常，请确保 API 密钥已正确配置并重试。
                 </div>
               )}
             </div>
@@ -347,37 +390,11 @@ const App: React.FC = () => {
               </p>
             </div>
           )}
-
-          {/* 历史记录 */}
-          {history.length > 0 && !result && (
-            <div className="pt-8 animate-in slide-in-from-bottom-6 duration-700">
-              <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] mb-8 flex items-center justify-center">
-                <History className="w-3.5 h-3.5 mr-2" /> 最近创作
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {history.slice(0, 4).map((item) => (
-                  <div 
-                    key={item.id} 
-                    onClick={() => setResult(item)}
-                    className="p-6 bg-white/40 border border-white rounded-[2rem] hover:bg-white hover:shadow-xl transition-all cursor-pointer group flex items-center justify-between shadow-sm"
-                  >
-                    <div className="max-w-[70%]">
-                      <h5 className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors truncate">{item.script.title}</h5>
-                      <p className="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-tighter">{new Date(item.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-200 group-hover:bg-indigo-50 group-hover:text-indigo-400 transition-all">
-                      <Play className="w-4 h-4 fill-current" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
       
       <footer className="mt-24 text-center text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase pb-10 opacity-60">
-        © 2025 ZenAI Studio • Powered by Google Gemini 2.5 Flash
+        © 2025 ZenAI Studio • Powered by Google Gemini
       </footer>
     </div>
   );
