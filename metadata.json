@@ -1,0 +1,7 @@
+{
+  "name": "AI Meditation Audio Studio",
+  "description": "A high-end meditation audio generation system that uses Gemini to write scripts, synthesize professional voice-overs, and mix them with ambient background music.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

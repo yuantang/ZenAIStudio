@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ZenAI Studio - 顶级 AI 智能冥想生成系统</title>
+  <meta name="description" content="使用 Gemini 2.5 系列模型驱动的专业冥想音频生成工作室，提供高保真 TTS 和动态环境音混音。">
+  
+  <!-- Vercel/Social Media Meta -->
+  <meta property="og:title" content="ZenAI Studio - AI 智能冥想生成">
+  <meta property="og:description" content="定制化深度心理疗愈，分钟级生成专业冥想音频。">
+  <meta name="theme-color" content="#4f46e5">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --bg-gradient: radial-gradient(circle at top right, #fdfbfb 0%, #ebedee 100%);
+    }
+    body {
+      font-family: 'Inter', "Microsoft YaHei", sans-serif;
+      background: var(--bg-gradient);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    .font-serif {
+      font-family: 'Playfair Display', "STSong", "Songti SC", serif;
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    .breathing-glow {
+      animation: breathe 4s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); opacity: 0.3; }
+      50% { transform: scale(1.1); opacity: 0.6; }
+    }
+    /* 自定义滚动条 */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.1); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(79, 70, 229, 0.2); }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0"
+  }
+}
+</script>
+</head>
+<body class="min-h-screen text-slate-900 selection:bg-indigo-100">
+  <div id="root"></div>
+</body>
+</html>
