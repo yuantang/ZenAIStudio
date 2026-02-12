@@ -48,6 +48,7 @@ const App: React.FC = () => {
   // 安全检查 API KEY
   const getApiKey = () => {
     try {
+      // @ts-ignore
       return process.env.API_KEY;
     } catch {
       return undefined;
@@ -154,7 +155,10 @@ const App: React.FC = () => {
       {!hasApiKey && (
         <div className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-3 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-xl">
           <Settings className="w-4 h-4 animate-spin-slow" /> 
-          <span>检测到 API_KEY 未设置。请前往 Vercel 控制台 -> Settings -> Environment Variables 添加 <b>API_KEY</b></span>
+          <span>
+            {"检测到 API_KEY 未设置。请前往 Vercel 控制台 → Settings → Environment Variables 添加 "}
+            <b>API_KEY</b>
+          </span>
           <a href="https://vercel.com/docs/projects/environment-variables" target="_blank" className="underline flex items-center gap-1 opacity-80 hover:opacity-100">
             查看帮助 <ExternalLink className="w-3 h-3" />
           </a>
