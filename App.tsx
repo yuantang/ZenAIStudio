@@ -15,6 +15,8 @@ import {
   AlertCircle,
   Settings,
   BookOpen,
+  BarChart3,
+  GraduationCap,
 } from "lucide-react";
 import {
   GenerationStatus,
@@ -44,9 +46,17 @@ import {
 } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
+import { VisualAmbience } from "./components/VisualAmbience";
+import { MeditationStats } from "./components/MeditationStats";
+import {
+  CourseCatalog,
+  MeditationCourse,
+  CourseDay,
+} from "./components/CourseCatalog";
 
 // ---- localStorage 持久化工具 ----
 const STORAGE_KEY = "zenai_history";
+const COURSE_PROGRESS_KEY = "zenai_course_progress";
 
 const blobToBase64 = (blob: Blob): Promise<string> =>
   new Promise((resolve) => {
@@ -134,6 +144,18 @@ const App: React.FC = () => {
     loadHistoryFromStorage(),
   );
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [showCourses, setShowCourses] = useState(false);
+  const [completedDays, setCompletedDays] = useState<Record<string, number[]>>(
+    () => {
+      try {
+        const raw = localStorage.getItem(COURSE_PROGRESS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    },
+  );
 
   // 密钥状态管理
   const [hasApiKey, setHasApiKey] = useState(true);
@@ -161,6 +183,28 @@ const App: React.FC = () => {
     }
     return () => clearInterval(interval);
   }, [status]);
+
+  const handleSelectCourseDay = useCallback(
+    (course: MeditationCourse, day: CourseDay) => {
+      setTheme(day.theme);
+      setSelectedDuration(day.durationMinutes);
+      setShowCourses(false);
+    },
+    [],
+  );
+
+  /** 课程进度标记（某一天完成时调用） */
+  const markCourseDay = useCallback((courseId: string, dayNum: number) => {
+    setCompletedDays((prev) => {
+      const next = { ...prev };
+      const days = next[courseId] || [];
+      if (!days.includes(dayNum)) {
+        next[courseId] = [...days, dayNum];
+      }
+      localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const handleOpenKeyDialog = async () => {
     if (window.aistudio?.openSelectKey) {
@@ -560,18 +604,36 @@ const App: React.FC = () => {
               </div>
 
               {/* 内容库入口 */}
-              {history.length > 0 && (
+              <div className="flex gap-2">
+                {history.length > 0 && (
+                  <button
+                    onClick={() => setShowLibrary(true)}
+                    className="flex-1 py-3.5 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    内容库
+                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-[10px] font-bold rounded-full">
+                      {history.length}
+                    </span>
+                  </button>
+                )}
+                {history.length > 0 && (
+                  <button
+                    onClick={() => setShowStats(true)}
+                    className="py-3.5 px-4 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100 transition-all flex items-center justify-center gap-1.5 text-sm font-medium"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    统计
+                  </button>
+                )}
                 <button
-                  onClick={() => setShowLibrary(true)}
-                  className="w-full py-3.5 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                  onClick={() => setShowCourses(true)}
+                  className="py-3.5 px-4 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all flex items-center justify-center gap-1.5 text-sm font-medium"
                 >
-                  <BookOpen className="w-4 h-4" />
-                  内容库
-                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-[10px] font-bold rounded-full">
-                    {history.length}
-                  </span>
+                  <GraduationCap className="w-4 h-4" />
+                  课程
                 </button>
-              )}
+              </div>
 
               {/* 动态进度条 */}
               {status !== GenerationStatus.IDLE &&
@@ -605,6 +667,14 @@ const App: React.FC = () => {
           {result ? (
             <div className="animate-in fade-in zoom-in-95 duration-700">
               <div className="glass p-12 md:p-20 rounded-[4rem] shadow-xl relative overflow-hidden bg-white/40 border border-white/60">
+                <VisualAmbience
+                  isPlaying={isPlaying}
+                  ambientHint={
+                    result.script.sections.find(
+                      (s) => s.ambientHint && s.ambientHint !== "silence",
+                    )?.ambientHint || "forest"
+                  }
+                />
                 <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 to-teal-400"></div>
 
                 <div className="flex flex-col items-center">
@@ -725,6 +795,21 @@ const App: React.FC = () => {
         history={history}
         onDelete={handleDeleteFromHistory}
         onDownload={downloadAudio}
+      />
+
+      {/* 冥想数据追踪 */}
+      <MeditationStats
+        isOpen={showStats}
+        onClose={() => setShowStats(false)}
+        history={history}
+      />
+
+      {/* 冥想课程目录 */}
+      <CourseCatalog
+        isOpen={showCourses}
+        onClose={() => setShowCourses(false)}
+        onSelectDay={handleSelectCourseDay}
+        completedDays={completedDays}
       />
     </div>
   );
