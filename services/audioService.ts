@@ -54,6 +54,7 @@ export async function mixMeditationAudio(
 
   let bgBuffer: AudioBuffer | null = null;
   try {
+    console.log(`[Step 3: Mixing] 正在获取背景音乐: ${bgMusicUrl}`);
     // 关键修复：使用 mode: 'cors' 并确保服务器支持
     const resp = await fetch(bgMusicUrl, { 
       mode: 'cors',
@@ -62,8 +63,9 @@ export async function mixMeditationAudio(
     if (!resp.ok) throw new Error(`HTTP Error ${resp.status}: 背景音资源无法获取`);
     const ab = await resp.arrayBuffer();
     bgBuffer = await offlineCtx.decodeAudioData(ab);
+    console.log("[Mixing] 背景音乐解码成功");
   } catch (e) {
-    console.warn("背景音乐合成跳过。这通常是因为该音频源不支持跨域请求。当前系统已切换至【纯净引导】模式。", e);
+    console.warn("[Mixing] 背景音乐绘制跳过，切换至纯净引导模式:", e);
   }
 
   if (bgBuffer) {
@@ -118,7 +120,9 @@ export async function mixMeditationAudio(
     vSource.start(item.start);
   });
 
+  console.log("[Step 3: Mixing] 正在开始离线渲染...");
   const renderedBuffer = await offlineCtx.startRendering();
+  console.log("[Mixing] 渲染完成，转换 WAV 格式");
   return bufferToWav(renderedBuffer);
 }
 
