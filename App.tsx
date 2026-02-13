@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Sparkles,
   Wind,
@@ -14,6 +14,7 @@ import {
   MessageSquare,
   AlertCircle,
   Settings,
+  BookOpen,
 } from "lucide-react";
 import { GenerationStatus, MeditationResult } from "./types";
 import {
@@ -33,6 +34,68 @@ import {
   mixSingleVoiceAudio,
 } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
+import { ContentLibrary } from "./components/ContentLibrary";
+
+// ---- localStorage 持久化工具 ----
+const STORAGE_KEY = "zenai_history";
+
+const blobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+
+const base64ToBlob = (dataUrl: string): Blob => {
+  const [header, data] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] || "audio/wav";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+};
+
+interface StoredResult {
+  id: string;
+  theme: string;
+  script: any;
+  audioBase64: string | null;
+  createdAt: number;
+}
+
+const saveHistoryToStorage = async (history: MeditationResult[]) => {
+  try {
+    const items: StoredResult[] = await Promise.all(
+      history.map(async (h) => ({
+        id: h.id,
+        theme: h.theme,
+        script: h.script,
+        audioBase64: h.audioBlob ? await blobToBase64(h.audioBlob) : null,
+        createdAt: h.createdAt,
+      })),
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch (e) {
+    console.warn("[Storage] 保存历史失败 (可能超出容量):", e);
+  }
+};
+
+const loadHistoryFromStorage = (): MeditationResult[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const items: StoredResult[] = JSON.parse(raw);
+    return items.map((s) => ({
+      id: s.id,
+      theme: s.theme,
+      script: s.script,
+      audioBlob: s.audioBase64 ? base64ToBlob(s.audioBase64) : null,
+      createdAt: s.createdAt,
+    }));
+  } catch {
+    return [];
+  }
+};
 
 const LOADING_MESSAGES = [
   "正在对齐您的呼吸节奏...",
@@ -52,7 +115,10 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [result, setResult] = useState<MeditationResult | null>(null);
-  const [history, setHistory] = useState<MeditationResult[]>([]);
+  const [history, setHistory] = useState<MeditationResult[]>(() =>
+    loadHistoryFromStorage(),
+  );
+  const [showLibrary, setShowLibrary] = useState(false);
 
   // 密钥状态管理
   const [hasApiKey, setHasApiKey] = useState(true);
@@ -140,7 +206,11 @@ const App: React.FC = () => {
       const res = await processSingleItem(theme);
       console.log(">>> 生成成功！正在展示结果 <<<");
       setResult(res);
-      setHistory((prev) => [res, ...prev]);
+      setHistory((prev) => {
+        const next = [res, ...prev];
+        saveHistoryToStorage(next);
+        return next;
+      });
       setStatus(GenerationStatus.COMPLETED);
     } catch (e: any) {
       console.error("!!! 生成中断 !!!", e);
@@ -169,6 +239,14 @@ const App: React.FC = () => {
   const applyPreset = (prompt: string) => {
     setTheme(prompt);
   };
+
+  const handleDeleteFromHistory = useCallback((id: string) => {
+    setHistory((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveHistoryToStorage(next);
+      return next;
+    });
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
@@ -361,6 +439,20 @@ const App: React.FC = () => {
                 </button>
               </div>
 
+              {/* 内容库入口 */}
+              {history.length > 0 && (
+                <button
+                  onClick={() => setShowLibrary(true)}
+                  className="w-full py-3.5 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  内容库
+                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-[10px] font-bold rounded-full">
+                    {history.length}
+                  </span>
+                </button>
+              )}
+
               {/* 动态进度条 */}
               {status !== GenerationStatus.IDLE &&
                 status !== GenerationStatus.COMPLETED &&
@@ -505,6 +597,15 @@ const App: React.FC = () => {
       <footer className="mt-24 text-center text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase pb-10 opacity-60">
         © 2025 ZenAI Studio • Powered by Google Gemini
       </footer>
+
+      {/* 内容库抽屉 */}
+      <ContentLibrary
+        isOpen={showLibrary}
+        onClose={() => setShowLibrary(false)}
+        history={history}
+        onDelete={handleDeleteFromHistory}
+        onDownload={downloadAudio}
+      />
     </div>
   );
 };
