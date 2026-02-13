@@ -261,24 +261,180 @@ function loopWithCrossfade(
 }
 
 /**
- * 单语音混音：接收单个连续的语音 Buffer，与背景音乐合成
- * 特性：crossfade 循环背景音 + CORS 兜底 + 动态 ducking
+ * ============================================================
+ *  音频后处理工具集
+ * ============================================================
+ */
+
+/**
+ * 生成混响脉冲响应（IR）— 模拟温暖的冥想教室空间
+ * 使用指数衰减的随机噪声，不需要任何外部文件
+ */
+function generateReverbIR(
+  ctx: OfflineAudioContext,
+  duration: number = 2.5,
+  decay: number = 2.0
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(2, length, sampleRate);
+  
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      // 指数衰减 × 随机噪声 = 自然混响尾巴
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-t * decay);
+    }
+  }
+  return buffer;
+}
+
+/**
+ * 合成藏传颂钵声（Tibetan Singing Bowl）
+ * 加法合成：基频 + 多个非谐波泛音 + 慢速调制 = 真实颂钵的金属共鸣
+ */
+function generateSingingBowl(
+  ctx: OfflineAudioContext,
+  duration: number = 8.0,
+  fundamentalFreq: number = 220
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  // 颂钵的特征泛音（非整数倍，这是金属碗的声学特征）
+  const harmonics = [
+    { ratio: 1.0,   amp: 1.0,  decay: 0.8  },  // 基频
+    { ratio: 2.71,  amp: 0.6,  decay: 1.0  },  // 第二泛音
+    { ratio: 4.95,  amp: 0.35, decay: 1.3  },  // 第三泛音
+    { ratio: 7.77,  amp: 0.2,  decay: 1.8  },  // 第四泛音
+    { ratio: 11.2,  amp: 0.1,  decay: 2.2  },  // 高次泛音
+  ];
+
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    let sample = 0;
+    
+    for (const h of harmonics) {
+      const freq = fundamentalFreq * h.ratio;
+      const envelope = Math.exp(-t * h.decay);
+      // 击打瞬态：前 20ms 的强烈冲击
+      const attack = t < 0.02 ? (t / 0.02) : 1.0;
+      // 微妙的频率颤动（颂钵的"吟唱"效果）
+      const vibrato = 1 + 0.002 * Math.sin(2 * Math.PI * 4.5 * t);
+      sample += h.amp * envelope * attack * Math.sin(2 * Math.PI * freq * vibrato * t);
+    }
+    
+    data[i] = sample * 0.15; // 总体音量控制
+  }
+
+  return buffer;
+}
+
+/**
+ * 生成柔和的水晶铃声（过渡标记用）
+ */
+function generateTransitionBell(
+  ctx: OfflineAudioContext,
+  duration: number = 3.0,
+  freq: number = 880
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    const envelope = Math.exp(-t * 2.5);
+    const attack = t < 0.005 ? (t / 0.005) : 1.0;
+    // 双频叠加产生清脆的铃声
+    const sample = 
+      0.6 * Math.sin(2 * Math.PI * freq * t) +
+      0.3 * Math.sin(2 * Math.PI * freq * 1.5 * t) +
+      0.1 * Math.sin(2 * Math.PI * freq * 3.0 * t);
+    data[i] = sample * envelope * attack * 0.08;
+  }
+
+  return buffer;
+}
+
+/**
+ * 在 OfflineAudioContext 中添加双耳节拍轨道
+ * 左右耳微差频率诱导特定脑波状态
+ */
+function addBinauralBeats(
+  ctx: OfflineAudioContext,
+  startTime: number,
+  duration: number,
+  baseFreq: number = 200,    // 载波频率（听不太到，越低越好）
+  beatFreq: number = 8       // 差频 = 目标脑波频率 (Alpha: 8-12Hz, Theta: 4-8Hz)
+): void {
+  const gainValue = 0.025; // 极低音量，仅潜意识感知
+
+  // 左耳
+  const oscL = ctx.createOscillator();
+  oscL.frequency.value = baseFreq;
+  oscL.type = 'sine';
+  const panL = ctx.createStereoPanner();
+  panL.pan.value = -1;
+  const gainL = ctx.createGain();
+  gainL.gain.setValueAtTime(0, startTime);
+  gainL.gain.linearRampToValueAtTime(gainValue, startTime + 3);
+  gainL.gain.setValueAtTime(gainValue, startTime + duration - 3);
+  gainL.gain.linearRampToValueAtTime(0, startTime + duration);
+  oscL.connect(gainL).connect(panL).connect(ctx.destination);
+  oscL.start(startTime);
+  oscL.stop(startTime + duration);
+
+  // 右耳（频率微差）
+  const oscR = ctx.createOscillator();
+  oscR.frequency.value = baseFreq + beatFreq;
+  oscR.type = 'sine';
+  const panR = ctx.createStereoPanner();
+  panR.pan.value = 1;
+  const gainR = ctx.createGain();
+  gainR.gain.setValueAtTime(0, startTime);
+  gainR.gain.linearRampToValueAtTime(gainValue, startTime + 3);
+  gainR.gain.setValueAtTime(gainValue, startTime + duration - 3);
+  gainR.gain.linearRampToValueAtTime(0, startTime + duration);
+  oscR.connect(gainR).connect(panR).connect(ctx.destination);
+  oscR.start(startTime);
+  oscR.stop(startTime + duration);
+}
+
+/**
+ * ============================================================
+ *  主混音函数（商用级）
+ *  特性：混响+EQ / crossfade循环 / 颂钵仪式 / 双耳节拍 / 动态ducking
+ * ============================================================
  */
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
   bgMusicUrl: string
 ): Promise<Blob> {
   const sampleRate = 44100;
-  const BGM_BASE_GAIN = 0.20;
-  const BGM_DUCKED_GAIN = 0.06;
-  const VOICE_GAIN = 1.0;
+  const BGM_BASE_GAIN = 0.18;
+  const BGM_DUCKED_GAIN = 0.05;
+  const VOICE_GAIN = 0.85; // 略低于 1.0，为混响留出余量避免削波
+  const REVERB_MIX = 0.15; // 混响湿声比例（15% 湿声 = 温暖但不模糊）
   
-  // 前奏 5s + 语音 + 结尾渐出 10s
-  const voiceStartTime = 5.0;
-  const totalDuration = voiceStartTime + voiceBuffer.duration + 10.0;
+  // 时间线：颂钵 3s → 过渡 2s → 语音 → 结束颂钵 → 渐出
+  const bowlIntroDuration = 8.0;  // 开场颂钵自然衰减
+  const voiceStartTime = 5.0;     // 语音在颂钵衰减后开始
+  const voiceEndTime = voiceStartTime + voiceBuffer.duration;
+  const outroGap = 2.0;           // 语音结束后的短暂静默
+  const bowlOutroDuration = 8.0;  // 结束颂钵
+  const fadeOutTail = 5.0;        // 最终渐出
+  const totalDuration = voiceEndTime + outroGap + bowlOutroDuration + fadeOutTail;
+  
   const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
 
-  // 1. 加载背景音乐（含 CORS 兜底）
+  // ────────────────────────────────────────────
+  // 1. 背景音乐轨道（含 CORS 兜底 + crossfade 循环）
+  // ────────────────────────────────────────────
   let bgBuffer: AudioBuffer | null = null;
   try {
     const resp = await fetch(bgMusicUrl, { mode: 'cors', credentials: 'omit' });
@@ -286,70 +442,124 @@ export async function mixSingleVoiceAudio(
     const ab = await resp.arrayBuffer();
     const rawBg = await offlineCtx.decodeAudioData(ab);
     
-    // 如果背景音频比总时长短，用 crossfade 循环扩展
     if (rawBg.duration < totalDuration) {
-      console.log(`[Mixing] 背景音乐 ${rawBg.duration.toFixed(1)}s < 总时长 ${totalDuration.toFixed(1)}s，执行 crossfade 循环`);
+      console.log(`[Mixing] 背景 crossfade 循环: ${rawBg.duration.toFixed(1)}s → ${totalDuration.toFixed(1)}s`);
       bgBuffer = loopWithCrossfade(offlineCtx, rawBg, totalDuration, 2.0);
     } else {
       bgBuffer = rawBg;
     }
-    console.log("[Mixing] 背景音乐准备完成");
   } catch (e) {
-    console.warn("[Mixing] 背景音乐加载失败，启用本地环境音 fallback:", e);
-    // CORS 兜底：使用生成式粉噪声作为环境底噪
+    console.warn("[Mixing] CDN 不可用，fallback 到粉噪声:", e);
     bgBuffer = generateAmbientFallback(offlineCtx, totalDuration);
   }
 
-  // 2. 背景音乐轨道（含 ducking）
   if (bgBuffer) {
     const bgSource = offlineCtx.createBufferSource();
     bgSource.buffer = bgBuffer;
-    // 不再用 loop=true，因为已经通过 crossfade 处理了完整时长
-    const bgGainNode = offlineCtx.createGain();
+    const bgGain = offlineCtx.createGain();
 
     // 前奏渐入
-    bgGainNode.gain.setValueAtTime(0, 0);
-    bgGainNode.gain.linearRampToValueAtTime(BGM_BASE_GAIN, voiceStartTime);
-
-    // 人声开始 → duck down (1.5s 平滑过渡)
-    bgGainNode.gain.setValueAtTime(BGM_BASE_GAIN, voiceStartTime);
-    bgGainNode.gain.exponentialRampToValueAtTime(BGM_DUCKED_GAIN, voiceStartTime + 1.5);
-
-    // 人声结束 → 恢复 (3s 平滑过渡)
-    const voiceEndTime = voiceStartTime + voiceBuffer.duration;
-    bgGainNode.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
-    bgGainNode.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
-
+    bgGain.gain.setValueAtTime(0, 0);
+    bgGain.gain.linearRampToValueAtTime(BGM_BASE_GAIN, voiceStartTime);
+    // 人声 ducking
+    bgGain.gain.setValueAtTime(BGM_BASE_GAIN, voiceStartTime);
+    bgGain.gain.exponentialRampToValueAtTime(BGM_DUCKED_GAIN, voiceStartTime + 1.5);
+    bgGain.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
+    bgGain.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
     // 结尾渐出
-    const fadeOutStart = totalDuration - 8.0;
-    bgGainNode.gain.setValueAtTime(BGM_BASE_GAIN, fadeOutStart);
-    bgGainNode.gain.linearRampToValueAtTime(0, totalDuration);
+    const fadeStart = totalDuration - fadeOutTail;
+    bgGain.gain.setValueAtTime(BGM_BASE_GAIN, fadeStart);
+    bgGain.gain.linearRampToValueAtTime(0, totalDuration);
 
-    bgSource.connect(bgGainNode);
-    bgGainNode.connect(offlineCtx.destination);
+    bgSource.connect(bgGain).connect(offlineCtx.destination);
     bgSource.start(0);
   }
 
-  // 3. 语音轨道（平滑淡入淡出）
+  // ────────────────────────────────────────────
+  // 2. 颂钵仪式声（开场 + 结束）
+  // ────────────────────────────────────────────
+  console.log("[Mixing] 合成颂钵仪式声...");
+  
+  // 开场颂钵（低频 220Hz，温暖深沉）
+  const introSB = generateSingingBowl(offlineCtx, bowlIntroDuration, 220);
+  const introSrc = offlineCtx.createBufferSource();
+  introSrc.buffer = introSB;
+  const introGain = offlineCtx.createGain();
+  introGain.gain.value = 1.0;
+  introSrc.connect(introGain).connect(offlineCtx.destination);
+  introSrc.start(0);
+
+  // 结束颂钵（略高频 330Hz，明亮唤醒）
+  const outroSB = generateSingingBowl(offlineCtx, bowlOutroDuration, 330);
+  const outroSrc = offlineCtx.createBufferSource();
+  outroSrc.buffer = outroSB;
+  const outroGain = offlineCtx.createGain();
+  outroGain.gain.value = 0.8;
+  outroSrc.connect(outroGain).connect(offlineCtx.destination);
+  outroSrc.start(voiceEndTime + outroGap);
+
+  // ────────────────────────────────────────────
+  // 3. 语音轨道 + 混响 + 暖色 EQ
+  // ────────────────────────────────────────────
+  console.log("[Mixing] 应用语音混响 + 暖色 EQ...");
+
   const vSource = offlineCtx.createBufferSource();
   vSource.buffer = voiceBuffer;
-  const vGain = offlineCtx.createGain();
 
-  // 0.8s 淡入
-  vGain.gain.setValueAtTime(0, voiceStartTime);
-  vGain.gain.linearRampToValueAtTime(VOICE_GAIN, voiceStartTime + 0.8);
+  // 干声通路
+  const dryGain = offlineCtx.createGain();
+  dryGain.gain.value = VOICE_GAIN * (1 - REVERB_MIX);
 
-  // 1.5s 淡出
-  const voiceEndTime = voiceStartTime + voiceBuffer.duration;
-  vGain.gain.setValueAtTime(VOICE_GAIN, voiceEndTime - 1.5);
-  vGain.gain.linearRampToValueAtTime(0, voiceEndTime);
+  // 湿声（混响）通路
+  const wetGain = offlineCtx.createGain();
+  wetGain.gain.value = VOICE_GAIN * REVERB_MIX;
+  const reverbIR = generateReverbIR(offlineCtx, 2.5, 2.0);
+  const convolver = offlineCtx.createConvolver();
+  convolver.buffer = reverbIR;
 
-  vSource.connect(vGain);
-  vGain.connect(offlineCtx.destination);
+  // 暖色 EQ：低频增益 + 高频滚降
+  const warmEQ = offlineCtx.createBiquadFilter();
+  warmEQ.type = 'lowshelf';
+  warmEQ.frequency.value = 300;
+  warmEQ.gain.value = 3.0; // +3dB 低频温暖度
+
+  const deEss = offlineCtx.createBiquadFilter();
+  deEss.type = 'highshelf';
+  deEss.frequency.value = 6000;
+  deEss.gain.value = -4.0; // -4dB 高频滚降，去除 TTS 的尖锐感
+
+  // 淡入淡出包络
+  const voiceEnvelope = offlineCtx.createGain();
+  voiceEnvelope.gain.setValueAtTime(0, voiceStartTime);
+  voiceEnvelope.gain.linearRampToValueAtTime(1, voiceStartTime + 0.8);
+  voiceEnvelope.gain.setValueAtTime(1, voiceEndTime - 1.5);
+  voiceEnvelope.gain.linearRampToValueAtTime(0, voiceEndTime);
+
+  // 信号链: source → EQ → envelope → (dry + wet/reverb) → destination
+  vSource.connect(warmEQ).connect(deEss).connect(voiceEnvelope);
+  voiceEnvelope.connect(dryGain).connect(offlineCtx.destination);
+  voiceEnvelope.connect(convolver).connect(wetGain).connect(offlineCtx.destination);
   vSource.start(voiceStartTime);
 
-  // 4. 离线渲染
+  // ────────────────────────────────────────────
+  // 4. 双耳节拍（Alpha → Theta 渐变）
+  // ────────────────────────────────────────────
+  console.log("[Mixing] 注入双耳节拍...");
+  
+  const binauralDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
+  // 开始用 Alpha 波（10Hz 放松），后半段过渡到 Theta 波（6Hz 深度冥想）
+  const halfPoint = binauralDuration / 2;
+  
+  // 前半段：Alpha 波 (10Hz)
+  addBinauralBeats(offlineCtx, voiceStartTime, halfPoint, 180, 10);
+  // 后半段：Theta 波 (6Hz)
+  addBinauralBeats(offlineCtx, voiceStartTime + halfPoint, binauralDuration - halfPoint, 180, 6);
+
+  // ────────────────────────────────────────────
+  // 5. 离线渲染
+  // ────────────────────────────────────────────
+  console.log(`[Mixing] 开始离线渲染 (${totalDuration.toFixed(1)}s)...`);
   const renderedBuffer = await offlineCtx.startRendering();
+  console.log("[Mixing] 渲染完成！");
   return bufferToWav(renderedBuffer);
 }
-
