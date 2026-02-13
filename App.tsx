@@ -13,7 +13,9 @@ import {
   MessageSquare,
   AlertCircle,
   Settings,
-<<<<<<< HEAD
+  X,
+  CheckCircle2,
+  Key,
   BookOpen,
   BarChart3,
   GraduationCap,
@@ -24,6 +26,8 @@ import {
   ExperienceLevel,
   MoodState,
   MeditationStyle,
+  MeditationCourse,
+  CourseDay,
 } from "./types";
 import {
   BACKGROUND_TRACKS,
@@ -36,99 +40,15 @@ import {
 } from "./constants";
 import {
   generateMeditationScript,
-  synthesizeSpeech,
   synthesizeFullMeditation,
+  getApiKey,
 } from "./services/geminiService";
-import {
-  decodePcm,
-  mixMeditationAudio,
-  mixSingleVoiceAudio,
-} from "./services/audioService";
+import { decodePcm, mixSingleVoiceAudio } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
 import { VisualAmbience } from "./components/VisualAmbience";
 import { MeditationStats } from "./components/MeditationStats";
-import {
-  CourseCatalog,
-  MeditationCourse,
-  CourseDay,
-} from "./components/CourseCatalog";
-
-// ---- localStorage 持久化工具 ----
-const STORAGE_KEY = "zenai_history";
-const COURSE_PROGRESS_KEY = "zenai_course_progress";
-
-const blobToBase64 = (blob: Blob): Promise<string> =>
-  new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.readAsDataURL(blob);
-  });
-
-const base64ToBlob = (dataUrl: string): Blob => {
-  const [header, data] = dataUrl.split(",");
-  const mime = header.match(/:(.*?);/)?.[1] || "audio/wav";
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-};
-
-interface StoredResult {
-  id: string;
-  theme: string;
-  script: any;
-  audioBase64: string | null;
-  createdAt: number;
-}
-
-const saveHistoryToStorage = async (history: MeditationResult[]) => {
-  try {
-    const items: StoredResult[] = await Promise.all(
-      history.map(async (h) => ({
-        id: h.id,
-        theme: h.theme,
-        script: h.script,
-        audioBase64: h.audioBlob ? await blobToBase64(h.audioBlob) : null,
-        createdAt: h.createdAt,
-      })),
-    );
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch (e) {
-    console.warn("[Storage] 保存历史失败 (可能超出容量):", e);
-  }
-};
-
-const loadHistoryFromStorage = (): MeditationResult[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const items: StoredResult[] = JSON.parse(raw);
-    return items.map((s) => ({
-      id: s.id,
-      theme: s.theme,
-      script: s.script,
-      audioBlob: s.audioBase64 ? base64ToBlob(s.audioBase64) : null,
-      createdAt: s.createdAt,
-    }));
-  } catch {
-    return [];
-  }
-};
-=======
-  X,
-  CheckCircle2,
-  Key
-} from 'lucide-react';
-import { 
-  GenerationStatus, 
-  MeditationResult
-} from './types';
-import { BACKGROUND_TRACKS, VOICES, MEDITATION_PRESETS } from './constants';
-import { generateMeditationScript, synthesizeSpeech, getApiKey } from './services/geminiService';
-import { decodePcm, mixMeditationAudio } from './services/audioService';
-import { AudioVisualizer } from './components/AudioVisualizer';
->>>>>>> origin/main
+import { CourseCatalog } from "./components/CourseCatalog";
 
 const LOADING_MESSAGES = [
   "正在对齐您的呼吸节奏...",
@@ -139,13 +59,66 @@ const LOADING_MESSAGES = [
   "深呼吸，美好的音频即将呈现...",
 ];
 
+const HISTORY_KEY = "zenai_meditation_history";
+const COURSE_PROGRESS_KEY = "zenai_course_progress";
+
+const loadHistoryFromStorage = (): MeditationResult[] => {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return parsed.map((item: any) => ({
+      ...item,
+      audioBlob: item.audioBase64
+        ? base64ToBlob(item.audioBase64, "audio/wav")
+        : null,
+    }));
+  } catch (e) {
+    console.error("Failed to load history:", e);
+    return [];
+  }
+};
+
+const saveHistoryToStorage = async (history: MeditationResult[]) => {
+  try {
+    const historyToSave = await Promise.all(
+      history.map(async (item) => {
+        const { audioBlob, ...rest } = item;
+        const audioBase64 = audioBlob ? await blobToBase64(audioBlob) : null;
+        return { ...rest, audioBase64 };
+      }),
+    );
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(historyToSave));
+  } catch (e) {
+    console.error("Failed to save history:", e);
+  }
+};
+
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+const base64ToBlob = (base64: string, type: string): Blob => {
+  const binary = atob(base64.split(",")[1]);
+  const array = [];
+  for (let i = 0; i < binary.length; i++) {
+    array.push(binary.charCodeAt(i));
+  }
+  return new Blob([new Uint8Array(array)], { type });
+};
+
 const App: React.FC = () => {
   const [theme, setTheme] = useState("");
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
   const [selectedDuration, setSelectedDuration] = useState(10);
   const [selectedExperience, setSelectedExperience] =
-    useState<ExperienceLevel>("intermediate");
+    useState<ExperienceLevel>("beginner");
   const [selectedMood, setSelectedMood] = useState<MoodState>("neutral");
   const [selectedStyle, setSelectedStyle] =
     useState<MeditationStyle>("mindfulness");
@@ -154,7 +127,7 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [result, setResult] = useState<MeditationResult | null>(null);
-<<<<<<< HEAD
+  const [errorInfo, setErrorInfo] = useState<string | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>(() =>
     loadHistoryFromStorage(),
   );
@@ -172,34 +145,17 @@ const App: React.FC = () => {
     },
   );
 
-  // 密钥状态管理
-  const [hasApiKey, setHasApiKey] = useState(true);
-=======
-  const [errorInfo, setErrorInfo] = useState<string | null>(null);
-  const [history, setHistory] = useState<MeditationResult[]>([]);
-  
   // 密钥配置状态
   const [showSettings, setShowSettings] = useState(false);
-  const [tempApiKey, setTempApiKey] = useState('');
+  const [tempApiKey, setTempApiKey] = useState("");
   const [currentApiKey, setCurrentApiKey] = useState<string | null>(null);
-  
->>>>>>> origin/main
+
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-<<<<<<< HEAD
-    // 检查 process.env 是否存在且 API_KEY 是否有效
-    const checkKey = () => {
-      const key = process.env.API_KEY;
-      setHasApiKey(!!key && key !== "YOUR_API_KEY");
-    };
-    checkKey();
-
-=======
     setCurrentApiKey(getApiKey());
-    
->>>>>>> origin/main
+
     let interval: number;
     if (
       status !== GenerationStatus.IDLE &&
@@ -213,7 +169,21 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [status]);
 
-<<<<<<< HEAD
+  const saveApiKey = () => {
+    if (tempApiKey.trim()) {
+      localStorage.setItem("ZENAI_API_KEY", tempApiKey.trim());
+      setCurrentApiKey(tempApiKey.trim());
+      setShowSettings(false);
+      setTempApiKey("");
+    }
+  };
+
+  const clearApiKey = () => {
+    localStorage.removeItem("ZENAI_API_KEY");
+    setCurrentApiKey(getApiKey());
+    setShowSettings(false);
+  };
+
   const handleSelectCourseDay = useCallback(
     (course: MeditationCourse, day: CourseDay) => {
       setTheme(day.theme);
@@ -223,7 +193,6 @@ const App: React.FC = () => {
     [],
   );
 
-  /** 课程进度标记（某一天完成时调用） */
   const markCourseDay = useCallback((courseId: string, dayNum: number) => {
     setCompletedDays((prev) => {
       const next = { ...prev };
@@ -235,31 +204,6 @@ const App: React.FC = () => {
       return next;
     });
   }, []);
-
-  const handleOpenKeyDialog = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      // 这里的 API_KEY 会被自动注入，重新检测即可
-      const key = process.env.API_KEY;
-      setHasApiKey(!!key);
-    } else {
-      alert("请在 Vercel 环境变量中配置 API_KEY，然后点击 Redeploy 重新部署。");
-=======
-  const saveApiKey = () => {
-    if (tempApiKey.trim()) {
-      localStorage.setItem('ZENAI_API_KEY', tempApiKey.trim());
-      setCurrentApiKey(tempApiKey.trim());
-      setShowSettings(false);
-      setTempApiKey('');
->>>>>>> origin/main
-    }
-  };
-
-  const clearApiKey = () => {
-    localStorage.removeItem('ZENAI_API_KEY');
-    setCurrentApiKey(getApiKey());
-    setShowSettings(false);
-  };
 
   const processSingleItem = async (currentTheme: string) => {
     setErrorInfo(null);
@@ -279,7 +223,6 @@ const App: React.FC = () => {
     setStatus(GenerationStatus.VOICING);
     setProgress(30);
 
-    // 整篇合成：单次 TTS 调用确保全程声纹一致
     const rawPcm = await synthesizeFullMeditation(script, selectedVoice);
     setProgress(75);
 
@@ -326,13 +269,8 @@ const App: React.FC = () => {
       });
       setStatus(GenerationStatus.COMPLETED);
     } catch (e: any) {
-<<<<<<< HEAD
-      console.error("!!! 生成中断 !!!", e);
-      alert(e.message || "生成失败，请重试。");
-=======
       console.error("生成流程异常:", e);
       setErrorInfo(e.message || "未知内部错误");
->>>>>>> origin/main
       setStatus(GenerationStatus.ERROR);
     }
   };
@@ -370,42 +308,39 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
-<<<<<<< HEAD
-      {/* 密钥配置警告 - 仅在缺失时显示 */}
-      {!hasApiKey && (
-        <div className="fixed top-0 left-0 w-full bg-amber-500 text-white py-2 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-lg animate-in slide-in-from-top duration-500">
-          <AlertCircle className="w-4 h-4" />
-          检测到 API_KEY 尚未生效。如果您已在 Vercel 配置，请点击右侧按钮。
-          <button
-            onClick={handleOpenKeyDialog}
-            className="bg-white text-amber-600 px-3 py-1 rounded-md hover:bg-amber-50 transition-colors flex items-center gap-1"
-          >
-            <Settings className="w-3 h-3" /> 激活密钥
-          </button>
-=======
       {/* 设置模态框 */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowSettings(false)}></div>
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            onClick={() => setShowSettings(false)}
+          ></div>
           <div className="relative glass p-8 md:p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-300">
-            <button onClick={() => setShowSettings(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+            <button
+              onClick={() => setShowSettings(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors"
+            >
               <X className="w-5 h-5" />
             </button>
-            
+
             <div className="flex flex-col items-center mb-8">
               <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4">
                 <Key className="w-8 h-8 text-indigo-500" />
               </div>
-              <h3 className="text-2xl font-serif font-bold text-slate-900">配置 API Key</h3>
+              <h3 className="text-2xl font-serif font-bold text-slate-900">
+                配置 API Key
+              </h3>
               <p className="text-slate-400 text-xs mt-2 text-center leading-relaxed">
-                您的 Key 将仅加密存储在浏览器本地缓存中。如果频繁遇到 500 错误，请检查 Key 的有效性或余额。
+                您的 Key 将仅加密存储在浏览器本地缓存中。
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">密钥串</label>
-                <input 
+                <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">
+                  密钥串
+                </label>
+                <input
                   type="password"
                   value={tempApiKey}
                   onChange={(e) => setTempApiKey(e.target.value)}
@@ -415,15 +350,15 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button 
+                <button
                   onClick={saveApiKey}
                   disabled={!tempApiKey.trim()}
-                  className={`flex-1 py-4 rounded-xl font-bold text-sm shadow-md transition-all ${tempApiKey.trim() ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                  className={`flex-1 py-4 rounded-xl font-bold text-sm shadow-md transition-all ${tempApiKey.trim() ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
                 >
                   保存并启用
                 </button>
-                {localStorage.getItem('ZENAI_API_KEY') && (
-                  <button 
+                {localStorage.getItem("ZENAI_API_KEY") && (
+                  <button
                     onClick={clearApiKey}
                     className="px-6 py-4 rounded-xl font-bold text-sm bg-white border border-slate-100 text-red-400 hover:bg-red-50 transition-all"
                   >
@@ -431,13 +366,8 @@ const App: React.FC = () => {
                   </button>
                 )}
               </div>
-              
-              <p className="text-[9px] text-slate-300 text-center pt-2">
-                没有 Key? 前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 underline hover:text-indigo-600">Google AI Studio</a> 免费获取。
-              </p>
             </div>
           </div>
->>>>>>> origin/main
         </div>
       )}
 
@@ -451,7 +381,7 @@ const App: React.FC = () => {
       </div>
 
       <header className="text-center mb-16 md:mb-24 relative">
-        <button 
+        <button
           onClick={() => setShowSettings(true)}
           className="absolute top-0 right-0 p-3 rounded-full bg-white/80 shadow-sm border border-slate-100 text-slate-400 hover:text-indigo-500 hover:shadow-md transition-all"
         >
@@ -466,7 +396,7 @@ const App: React.FC = () => {
           ZenAI Studio
         </h1>
         <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed px-4">
-          由 Gemini 3 Pro 驱动的深度冥想创作系统。
+          由 Gemini 驱动的深度冥想创作系统。
           <br className="hidden md:block" />
           为您定制绝对稳定的疗愈频率。
         </p>
@@ -480,23 +410,20 @@ const App: React.FC = () => {
               <span className="flex items-center">
                 <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
               </span>
-<<<<<<< HEAD
               <div
-                className={`w-2 h-2 rounded-full ${hasApiKey ? "bg-emerald-400 shadow-[0_0_8px_#34d399]" : "bg-amber-400 shadow-[0_0_8px_#fbbf24]"}`}
-                title={hasApiKey ? "密钥已连接" : "密钥待激活"}
-              ></div>
-=======
-              <div 
-                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-bold transition-all ${currentApiKey ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600 cursor-pointer'}`}
+                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-bold transition-all ${currentApiKey ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600 cursor-pointer"}`}
                 onClick={() => !currentApiKey && setShowSettings(true)}
               >
                 {currentApiKey ? (
-                  <><CheckCircle2 className="w-3 h-3" /> API 就绪</>
+                  <>
+                    <CheckCircle2 className="w-3 h-3" /> API 就绪
+                  </>
                 ) : (
-                  <><AlertCircle className="w-3 h-3" /> 需要配置</>
+                  <>
+                    <AlertCircle className="w-3 h-3" /> 需要配置
+                  </>
                 )}
               </div>
->>>>>>> origin/main
             </h2>
 
             <div className="space-y-8">
@@ -524,7 +451,8 @@ const App: React.FC = () => {
                   value={theme}
                   onChange={(e) => {
                     setTheme(e.target.value);
-                    if (status === GenerationStatus.ERROR) setStatus(GenerationStatus.IDLE);
+                    if (status === GenerationStatus.ERROR)
+                      setStatus(GenerationStatus.IDLE);
                   }}
                 />
               </section>
@@ -720,10 +648,13 @@ const App: React.FC = () => {
                       : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
                   }`}
                 >
-<<<<<<< HEAD
-                  {status === GenerationStatus.IDLE ||
-                  status === GenerationStatus.COMPLETED ||
-                  status === GenerationStatus.ERROR ? (
+                  {!currentApiKey ? (
+                    <>
+                      <Key className="w-5 h-5 mr-3" /> 请先配置 API Key
+                    </>
+                  ) : status === GenerationStatus.IDLE ||
+                    status === GenerationStatus.COMPLETED ||
+                    status === GenerationStatus.ERROR ? (
                     <>
                       <RefreshCw className="w-5 h-5 mr-3" /> 生成专属冥想
                     </>
@@ -733,260 +664,181 @@ const App: React.FC = () => {
                       {progress}% 处理中
                     </>
                   )}
-=======
-                  {!currentApiKey ? (
-                    <><Key className="w-5 h-5 mr-3" /> 请先配置 API Key</>
-                  ) : (status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED || status === GenerationStatus.ERROR ? (
-                    <><RefreshCw className="w-5 h-5 mr-3" /> 生成专属冥想</>
-                  ) : (
-                    <><RefreshCw className="w-5 h-5 mr-3 animate-spin" /> {progress}% 处理中</>
-                  ))}
->>>>>>> origin/main
                 </button>
               </div>
 
-              {/* 内容库入口 */}
+              {/* 功能入口排 */}
               <div className="flex gap-2">
-                {history.length > 0 && (
-                  <button
-                    onClick={() => setShowLibrary(true)}
-                    className="flex-1 py-3.5 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center justify-center gap-2 text-sm font-medium"
-                  >
-                    <BookOpen className="w-4 h-4" />
-                    内容库
-                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-500 text-[10px] font-bold rounded-full">
-                      {history.length}
-                    </span>
-                  </button>
-                )}
-                {history.length > 0 && (
-                  <button
-                    onClick={() => setShowStats(true)}
-                    className="py-3.5 px-4 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100 transition-all flex items-center justify-center gap-1.5 text-sm font-medium"
-                  >
-                    <BarChart3 className="w-4 h-4" />
-                    统计
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowLibrary(true)}
+                  className="flex-1 py-3 rounded-2xl bg-white border border-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <BookOpen className="w-4 h-4" /> 冥想内容库
+                </button>
+                <button
+                  onClick={() => setShowStats(true)}
+                  className="flex-1 py-3 rounded-2xl bg-white border border-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <BarChart3 className="w-4 h-4" /> 练习统计
+                </button>
                 <button
                   onClick={() => setShowCourses(true)}
-                  className="py-3.5 px-4 rounded-2xl border border-slate-100 bg-white/40 text-slate-500 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-100 transition-all flex items-center justify-center gap-1.5 text-sm font-medium"
+                  className="flex-1 py-3 rounded-2xl bg-white border border-slate-100 text-slate-500 text-[10px] font-bold hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                 >
-                  <GraduationCap className="w-4 h-4" />
-                  课程
+                  <GraduationCap className="w-4 h-4" /> 结构化课程
                 </button>
               </div>
-
-              {/* 动态进度条 */}
-              {status !== GenerationStatus.IDLE &&
-                status !== GenerationStatus.COMPLETED &&
-                status !== GenerationStatus.ERROR && (
-                  <div className="text-center">
-                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest animate-pulse mb-3 h-4">
-                      {LOADING_MESSAGES[loadingMsgIdx]}
-                    </p>
-                    <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-500 transition-all duration-700 ease-out shadow-[0_0_8px_rgba(79,70,229,0.4)]"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-              {status === GenerationStatus.ERROR && (
-<<<<<<< HEAD
-                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100">
-                  <AlertCircle className="w-4 h-4 mr-2" /> 生成异常，请确保 API
-                  密钥已正确配置并重试。
-=======
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="p-5 bg-red-50 text-red-600 rounded-[1.5rem] border border-red-100">
-                    <div className="flex items-start mb-2">
-                      <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-bold mb-1">服务暂时波动 (Internal Error)</p>
-                        <p className="text-[11px] leading-relaxed opacity-80">{errorInfo || "Gemini API 发生了 500 内部错误。这通常是由于服务端负载过高或试验性模型波动引起的。"}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-4">
-                      <button 
-                        onClick={handleGenerate}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition-colors"
-                      >
-                        重新尝试
-                      </button>
-                      <button 
-                        onClick={() => setShowSettings(true)}
-                        className="px-4 py-2 bg-white text-red-600 border border-red-100 rounded-lg text-[10px] font-bold hover:bg-red-100 transition-colors"
-                      >
-                        检查设置
-                      </button>
-                    </div>
-                  </div>
->>>>>>> origin/main
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* 展示区 */}
-        <div className="lg:col-span-7 space-y-12 order-1 lg:order-2">
-          {result ? (
-            <div className="animate-in fade-in zoom-in-95 duration-700">
-              <div className="glass p-12 md:p-20 rounded-[4rem] shadow-xl relative overflow-hidden bg-white/40 border border-white/60">
-                <VisualAmbience
-                  isPlaying={isPlaying}
-                  ambientHint={
-                    result.script.sections.find(
-                      (s) => s.ambientHint && s.ambientHint !== "silence",
-                    )?.ambientHint || "forest"
-                  }
-                />
-                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-indigo-500 to-teal-400"></div>
-
-                <div className="flex flex-col items-center">
-                  <div className="relative mb-12">
-                    <div
-                      className={`absolute -inset-10 bg-indigo-500/5 rounded-full blur-[60px] transition-all duration-1000 ${isPlaying ? "opacity-100 scale-125 animate-pulse" : "opacity-0 scale-90"}`}
-                    ></div>
-                    <button
-                      onClick={togglePlay}
-                      className="relative w-36 h-36 md:w-44 md:h-44 bg-slate-900 rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all group overflow-hidden"
-                    >
-                      {isPlaying ? (
-                        <Pause className="w-12 h-12 text-white fill-current" />
-                      ) : (
-                        <Play className="w-12 h-12 text-white ml-2 fill-current" />
-                      )}
-                    </button>
-                  </div>
-
-                  <h3 className="text-3xl md:text-5xl font-serif font-bold text-slate-900 mb-6 tracking-tight text-center px-4 leading-tight">
-                    {result.script.title}
-                  </h3>
-                  <div className="flex items-center space-x-2 text-slate-400 mb-10">
-                    <Leaf className="w-3.5 h-3.5 text-teal-400" />
-                    <span className="text-[10px] font-bold tracking-[0.1em] uppercase">
-                      Healing Journey Active
-                    </span>
-                  </div>
-
-                  <AudioVisualizer isPlaying={isPlaying} audioRef={audioRef} />
-                  <audio
-                    ref={audioRef}
-                    src={
-                      result.audioBlob
-                        ? URL.createObjectURL(result.audioBlob)
-                        : ""
-                    }
-                    onEnded={() => setIsPlaying(false)}
-                    className="hidden"
-                  />
-
-                  <div className="flex flex-wrap justify-center gap-4 mt-16">
-                    <button
-                      onClick={() =>
-                        downloadAudio(result.audioBlob!, result.script.title)
-                      }
-                      className="px-8 py-4 bg-indigo-600 text-white font-bold rounded-full shadow-lg hover:bg-indigo-700 transition-all flex items-center text-sm"
-                    >
-                      <Download className="w-4 h-4 mr-2" /> 导出 WAV 高品质音频
-                    </button>
-                    <button
-                      onClick={() => {
-                        setResult(null);
-                        setStatus(GenerationStatus.IDLE);
-                      }}
-                      className="px-8 py-4 bg-white text-slate-400 font-bold rounded-full border border-slate-100 hover:bg-slate-50 transition-all text-sm"
-                    >
-                      生成新篇章
-                    </button>
-                  </div>
-                </div>
+        {/* 预览区 */}
+        <div className="lg:col-span-7 order-1 lg:order-2 self-start sticky top-10">
+          {status === GenerationStatus.IDLE && !result && (
+            <div className="glass p-16 rounded-[4rem] text-center border-dashed border-2 border-indigo-100/50 flex flex-col items-center">
+              <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mb-8 animate-pulse">
+                <Wind className="w-10 h-10 text-indigo-200" />
               </div>
-
-              {/* 剧本预览 */}
-              <div className="mt-12 glass p-10 md:p-16 rounded-[3rem] border border-white/40 shadow-sm">
-                <h4 className="text-[10px] font-black text-slate-300 mb-10 flex items-center uppercase tracking-[0.4em]">
-                  <Wind className="w-4 h-4 mr-3 text-indigo-500" /> 剧本细节 /
-                  Script
-                </h4>
-                <div className="space-y-10">
-                  {result.script.sections.map((section, idx) => (
-                    <div
-                      key={idx}
-                      className="relative pl-8 border-l-2 border-slate-100 hover:border-indigo-200 transition-colors"
-                    >
-                      <div className="absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full bg-slate-200 border-2 border-white"></div>
-                      <div className="flex justify-between items-center mb-3">
-                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">
-                          {section.type}
-                        </span>
-                        <span className="text-[9px] text-slate-300 italic font-medium">
-                          静默 {section.pauseSeconds}s
-                        </span>
-                      </div>
-                      <p className="text-slate-500 text-lg leading-relaxed font-light italic">
-                        “{section.content}”
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="h-[500px] md:h-[650px] flex flex-col items-center justify-center p-12 bg-white/5 rounded-[4rem] border-2 border-dashed border-slate-200/50 animate-in fade-in duration-1000">
-              <div className="w-20 h-20 bg-white/80 rounded-full flex items-center justify-center shadow-sm mb-8 relative">
-                <div className="absolute inset-0 bg-indigo-100 rounded-full animate-ping opacity-20"></div>
-                <Volume2 className="w-8 h-8 text-slate-300" />
-              </div>
-              <h3 className="text-2xl font-serif font-bold text-slate-400 mb-4 tracking-tight">
-                静候佳音
+              <h3 className="text-2xl font-serif text-slate-400 font-light mb-4">
+                准备好开始了吗？
               </h3>
-              <p className="text-slate-400/60 max-w-xs text-center leading-relaxed text-sm font-light">
-                请输入您的冥想意图，ZenAI 将为您编织一段专属的深度放松之旅。
+              <p className="text-slate-300 text-sm max-w-xs leading-relaxed">
+                描述您的心境，让 AI 为您编织
+                <br />
+                长达 20 分钟的深度沉浸式冥想。
               </p>
-              {!currentApiKey && (
-                <button 
-                  onClick={() => setShowSettings(true)}
-                  className="mt-8 px-6 py-3 rounded-full bg-indigo-50 text-indigo-600 font-bold text-xs hover:bg-indigo-100 transition-all flex items-center"
-                >
-                  <Settings className="w-4 h-4 mr-2" /> 配置 API Key 以开始
-                </button>
-              )}
+            </div>
+          )}
+
+          {status === GenerationStatus.ERROR && (
+            <div className="glass p-12 rounded-[3rem] text-center border-red-100 border-2">
+              <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-6" />
+              <h3 className="text-xl font-bold text-red-500 mb-2">
+                生成遇到了一点阻碍
+              </h3>
+              <p className="text-red-400 text-sm mb-8 px-4">
+                {errorInfo || "可能是由于网络波动或 API 限流。"}
+              </p>
+              <button
+                onClick={handleGenerate}
+                className="px-8 py-3 bg-red-50 text-red-500 rounded-full text-sm font-bold hover:bg-red-500 hover:text-white transition-all"
+              >
+                重试生成
+              </button>
+            </div>
+          )}
+
+          {result && (
+            <div className="glass p-10 md:p-16 rounded-[4rem] shadow-2xl shadow-indigo-100/50 relative overflow-hidden group">
+              {/* 可视化背景 */}
+              <VisualAmbience
+                isPlaying={isPlaying}
+                hint={result.script.sections[0]?.ambientHint}
+              />
+
+              <div className="relative z-10 text-center">
+                <div className="mb-12 inline-flex relative p-8">
+                  <div className="absolute inset-0 bg-indigo-100/30 rounded-full scale-150 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
+                  <button
+                    onClick={togglePlay}
+                    className="w-28 h-28 bg-slate-900 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-105 transition-transform relative z-20 group/play"
+                  >
+                    {isPlaying ? (
+                      <Pause className="w-10 h-10 group-hover/play:scale-95 transition-transform" />
+                    ) : (
+                      <Play className="w-10 h-10 pl-2 group-hover/play:scale-110 transition-transform" />
+                    )}
+                  </button>
+                </div>
+
+                <h3 className="text-3xl font-serif font-black text-slate-900 mb-4 tracking-tight">
+                  {result.script.title}
+                </h3>
+                <div className="text-indigo-500 text-[10px] font-black tracking-widest uppercase mb-12 flex items-center justify-center gap-3">
+                  <span className="w-8 h-px bg-indigo-100"></span>
+                  {(result.audioBlob.size / 1024 / 1024).toFixed(1)} MB WAV •{" "}
+                  {selectedDuration} MIN SESSION
+                  <span className="w-8 h-px bg-indigo-100"></span>
+                </div>
+
+                <div className="mb-12">
+                  <AudioVisualizer
+                    audioRef={audioRef}
+                    isPlaying={isPlaying}
+                    color="#6366f1"
+                  />
+                </div>
+
+                <div className="flex justify-center gap-4">
+                  <button
+                    onClick={() =>
+                      downloadAudio(result.audioBlob, result.script.title)
+                    }
+                    className="px-8 py-4 bg-white border border-slate-100 text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:shadow-lg transition-all flex items-center gap-3"
+                  >
+                    <Download className="w-4 h-4" /> 下载音频
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResult(null);
+                      setStatus(GenerationStatus.IDLE);
+                    }}
+                    className="px-8 py-4 bg-slate-50 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-slate-600 transition-all"
+                  >
+                    重新生成
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      <footer className="mt-24 text-center text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase pb-10 opacity-60">
-        © 2025 ZenAI Studio • Powered by Google Gemini
+      <footer className="mt-32 text-center text-slate-300">
+        <div className="w-16 h-px bg-slate-100 mx-auto mb-8"></div>
+        <p className="text-[10px] uppercase tracking-[0.3em] font-medium">
+          Pure Healing Experience • Powered by DeepMind
+        </p>
       </footer>
 
-      {/* 内容库抽屉 */}
+      {/* 音频标签及其事件处理 */}
+      {result && (
+        <audio
+          ref={audioRef}
+          src={URL.createObjectURL(result.audioBlob)}
+          onEnded={() => {
+            setIsPlaying(false);
+            // 如果是在课程中生成的，标记该天完成
+            const currentCourse = MEDITATION_PRESETS.find(
+              (p) => p.prompt === theme,
+            ) as any;
+            if (currentCourse?.courseId) {
+              markCourseDay(currentCourse.courseId, currentCourse.dayNum);
+            }
+          }}
+          className="hidden"
+        />
+      )}
+
+      {/* 弹窗组件 */}
       <ContentLibrary
         isOpen={showLibrary}
         onClose={() => setShowLibrary(false)}
         history={history}
         onDelete={handleDeleteFromHistory}
-        onDownload={downloadAudio}
       />
 
-      {/* 冥想数据追踪 */}
       <MeditationStats
         isOpen={showStats}
         onClose={() => setShowStats(false)}
         history={history}
       />
 
-      {/* 冥想课程目录 */}
       <CourseCatalog
         isOpen={showCourses}
         onClose={() => setShowCourses(false)}
-        onSelectDay={handleSelectCourseDay}
         completedDays={completedDays}
+        onSelectDay={handleSelectCourseDay}
       />
     </div>
   );

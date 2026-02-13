@@ -52,3 +52,19 @@ export interface BatchItem {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   result?: MeditationResult;
 }
+
+export interface CourseDay {
+  day: number;
+  title: string;
+  theme: string;
+  durationMinutes: number;
+  description: string;
+}
+
+export interface MeditationCourse {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  days: CourseDay[];
+}
