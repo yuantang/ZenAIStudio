@@ -17,7 +17,7 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美感的冥想剧本
  */
-export const generateMeditationScript = async (theme: string, retries = 2): Promise<MeditationScript> => {
+export const generateMeditationScript = async (theme: string, durationMinutes: number = 10, retries = 2): Promise<MeditationScript> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error("API_KEY 尚未配置。");
@@ -28,7 +28,11 @@ export const generateMeditationScript = async (theme: string, retries = 2): Prom
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview', 
-      contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏：\n\n主题：${theme}`,
+      contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏。
+
+【目标时长】：${durationMinutes} 分钟（请根据时长严格控制内容篇幅和段落数量，语音朗读总时长加上停顿时间应尽可能接近 ${durationMinutes} 分钟）
+
+主题：${theme}`,
       config: {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",

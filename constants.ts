@@ -87,6 +87,13 @@ export const BACKGROUND_TRACKS: BackgroundTrack[] = [
   }
 ];
 
+export const DURATION_OPTIONS = [
+  { id: 5, label: '5 分钟', icon: '⚡', description: '快速放松' },
+  { id: 10, label: '10 分钟', icon: '🧘', description: '标准冥想' },
+  { id: 15, label: '15 分钟', icon: '🌿', description: '深度疗愈' },
+  { id: 20, label: '20 分钟', icon: '🌙', description: '沉浸体验' },
+];
+
 export const VOICES = [
   { id: 'Kore', name: '恬静女声 (Kore)', gender: 'female' },
   { id: 'Zephyr', name: '温柔治愈 (Zephyr)', gender: 'female' },

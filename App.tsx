@@ -16,7 +16,12 @@ import {
   Settings,
 } from "lucide-react";
 import { GenerationStatus, MeditationResult } from "./types";
-import { BACKGROUND_TRACKS, VOICES, MEDITATION_PRESETS } from "./constants";
+import {
+  BACKGROUND_TRACKS,
+  VOICES,
+  MEDITATION_PRESETS,
+  DURATION_OPTIONS,
+} from "./constants";
 import {
   generateMeditationScript,
   synthesizeSpeech,
@@ -42,6 +47,7 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState("");
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
+  const [selectedDuration, setSelectedDuration] = useState(10);
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
@@ -89,7 +95,10 @@ const App: React.FC = () => {
   const processSingleItem = async (currentTheme: string) => {
     setStatus(GenerationStatus.WRITING);
     setProgress(5);
-    const script = await generateMeditationScript(currentTheme);
+    const script = await generateMeditationScript(
+      currentTheme,
+      selectedDuration,
+    );
     setProgress(20);
 
     setStatus(GenerationStatus.VOICING);
@@ -240,6 +249,33 @@ const App: React.FC = () => {
                   value={theme}
                   onChange={(e) => setTheme(e.target.value)}
                 />
+              </section>
+
+              <section>
+                <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
+                  ⏱ 时长 / Duration
+                </label>
+                <div className="flex gap-2">
+                  {DURATION_OPTIONS.map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setSelectedDuration(d.id)}
+                      className={`flex-1 flex flex-col items-center p-3 rounded-2xl border transition-all ${
+                        selectedDuration === d.id
+                          ? "bg-indigo-50 border-indigo-200 shadow-sm"
+                          : "bg-white/40 border-slate-50 hover:border-indigo-100"
+                      }`}
+                    >
+                      <span className="text-lg mb-0.5">{d.icon}</span>
+                      <span className="text-[10px] font-bold text-slate-600">
+                        {d.label}
+                      </span>
+                      <span className="text-[8px] text-slate-400">
+                        {d.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </section>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
