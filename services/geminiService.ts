@@ -2,6 +2,14 @@ import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@
 import { SYSTEM_PROMPT, TTS_SYSTEM_INSTRUCTION } from "../constants";
 import { MeditationScript, MeditationPersonalization } from "../types";
 
+export const getApiKey = (): string | null => {
+  const cachedKey = localStorage.getItem('ZENAI_API_KEY');
+  if (cachedKey) return cachedKey;
+  const envKey = process.env.API_KEY;
+  if (envKey && envKey !== 'YOUR_API_KEY') return envKey;
+  return null;
+};
+
 function decodeBase64(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -38,9 +46,10 @@ const buildPersonalizationContext = (p?: MeditationPersonalization): string => {
 };
 
 /**
- * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美感的冥想剧本
+ * 核心脚本生成器 - 优化稳定性
  */
 export const generateMeditationScript = async (
+<<<<<<< HEAD
   theme: string,
   durationMinutes: number = 10,
   personalization?: MeditationPersonalization,
@@ -62,6 +71,22 @@ export const generateMeditationScript = async (
 【目标时长】：${durationMinutes} 分钟（请根据时长严格控制内容篇幅和段落数量，语音朗读总时长加上停顿时间应尽可能接近 ${durationMinutes} 分钟）
 ${personCtx}
 主题：${theme}`,
+=======
+  theme: string, 
+  retries = 3
+): Promise<MeditationScript> => {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key 未配置");
+
+  const ai = new GoogleGenAI({ apiKey });
+  // 500 错误多发于 Pro 模型，此处默认使用 Flash 提升成功率
+  const modelName = retries < 2 ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: `Generate a professional meditation script for theme: ${theme}`,
+>>>>>>> origin/main
       config: {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -74,10 +99,16 @@ ${personCtx}
               items: {
                 type: Type.OBJECT,
                 properties: {
+<<<<<<< HEAD
                   type: { type: Type.STRING },
                   content: { type: Type.STRING },
                   pauseSeconds: { type: Type.NUMBER },
                   ambientHint: { type: Type.STRING }
+=======
+                  type: { type: Type.STRING, description: "Type of section" },
+                  content: { type: Type.STRING, description: "Spoken content" },
+                  pauseSeconds: { type: Type.NUMBER, description: "Silence after" }
+>>>>>>> origin/main
                 },
                 required: ["type", "content", "pauseSeconds", "ambientHint"]
               }
@@ -95,25 +126,33 @@ ${personCtx}
     });
 
     const text = response.text;
-    if (!text) throw new Error("模型未返回有效内容");
+    if (!text) throw new Error("Empty response");
     return JSON.parse(text.trim());
   } catch (error: any) {
     if (retries > 0) {
+<<<<<<< HEAD
       await wait(2000);
       return generateMeditationScript(theme, durationMinutes, personalization, retries - 1);
+=======
+      const delay = (4 - retries) * 3000;
+      await wait(delay);
+      return generateMeditationScript(theme, retries - 1);
+>>>>>>> origin/main
     }
     throw error;
   }
 };
 
 /**
+<<<<<<< HEAD
  * 合成大师级冥想语音 (Initial TTS Model)
+=======
+ * TTS 合成 - 增加容错
+>>>>>>> origin/main
  */
 export const synthesizeSpeech = async (text: string, voiceName: string, retries = 2): Promise<Uint8Array> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY 尚未配置。");
-  }
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key 未配置");
 
   const ai = new GoogleGenAI({ apiKey });
   const targetVoice = voiceName || 'Zephyr';
@@ -126,23 +165,22 @@ export const synthesizeSpeech = async (text: string, voiceName: string, retries 
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { 
-              voiceName: targetVoice 
-            }
+            prebuiltVoiceConfig: { voiceName: targetVoice }
           }
         }
       }
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-      throw new Error("TTS 引擎未能返回音频数据。");
-    }
-
+    if (!base64Audio) throw new Error("TTS Failure");
     return decodeBase64(base64Audio);
   } catch (error: any) {
     if (retries > 0) {
+<<<<<<< HEAD
       await wait(1500);
+=======
+      await wait(2000);
+>>>>>>> origin/main
       return synthesizeSpeech(text, voiceName, retries - 1);
     }
     throw error;
