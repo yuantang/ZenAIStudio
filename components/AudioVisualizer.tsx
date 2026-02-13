@@ -1,32 +1,43 @@
+
 import React, { useEffect, useRef } from 'react';
 
 interface AudioVisualizerProps {
   isPlaying: boolean;
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, audioRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Add initial null argument to useRef calls to satisfy TypeScript requirements
   const animationRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
   useEffect(() => {
-    if (!audioRef.current || !canvasRef.current) return;
+    // 仅在初次加载且没有建立连接时初始化
+    if (!audioRef.current || audioCtxRef.current) return;
 
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const analyzer = audioCtx.createAnalyser();
-    analyzer.fftSize = 256;
-    analyzerRef.current = analyzer;
-
-    const source = audioCtx.createMediaElementSource(audioRef.current);
-    source.connect(analyzer);
-    analyzer.connect(audioCtx.destination);
-    sourceRef.current = source;
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyzer = audioCtx.createAnalyser();
+      analyzer.fftSize = 256;
+      
+      const source = audioCtx.createMediaElementSource(audioRef.current);
+      source.connect(analyzer);
+      analyzer.connect(audioCtx.destination);
+      
+      audioCtxRef.current = audioCtx;
+      analyzerRef.current = analyzer;
+      sourceRef.current = source;
+    } catch (e) {
+      console.warn("AudioContext initialization failed", e);
+    }
 
     return () => {
-      audioCtx.close();
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+        audioCtxRef.current = null;
+      }
     };
   }, [audioRef]);
 
@@ -42,7 +53,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, aud
 
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
-      analyzerRef.current!.getByteFrequencyData(dataArray);
+      if (analyzerRef.current) {
+        analyzerRef.current.getByteFrequencyData(dataArray);
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const width = canvas.width;
@@ -72,7 +85,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, aud
   return (
     <canvas 
       ref={canvasRef} 
-      className="w-full h-24 rounded-lg opacity-60"
+      className="w-full h-24 rounded-lg opacity-40"
       width={600}
       height={100}
     />

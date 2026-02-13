@@ -8,20 +8,22 @@ import {
   Play, 
   Pause, 
   RefreshCw,
-  History,
   ShieldCheck,
   Zap,
   Leaf,
   MessageSquare,
   AlertCircle,
-  Settings
+  Settings,
+  X,
+  CheckCircle2,
+  Key
 } from 'lucide-react';
 import { 
   GenerationStatus, 
   MeditationResult
 } from './types';
 import { BACKGROUND_TRACKS, VOICES, MEDITATION_PRESETS } from './constants';
-import { generateMeditationScript, synthesizeSpeech } from './services/geminiService';
+import { generateMeditationScript, synthesizeSpeech, getApiKey } from './services/geminiService';
 import { decodePcm, mixMeditationAudio } from './services/audioService';
 import { AudioVisualizer } from './components/AudioVisualizer';
 
@@ -42,22 +44,20 @@ const App: React.FC = () => {
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [result, setResult] = useState<MeditationResult | null>(null);
+  const [errorInfo, setErrorInfo] = useState<string | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>([]);
   
-  // 密钥状态管理
-  const [hasApiKey, setHasApiKey] = useState(true);
+  // 密钥配置状态
+  const [showSettings, setShowSettings] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState('');
+  const [currentApiKey, setCurrentApiKey] = useState<string | null>(null);
+  
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // 检测密钥并轮播加载文案
   useEffect(() => {
-    // 检查 process.env 是否存在且 API_KEY 是否有效
-    const checkKey = () => {
-      const key = process.env.API_KEY;
-      setHasApiKey(!!key && key !== 'YOUR_API_KEY');
-    };
-    checkKey();
-
+    setCurrentApiKey(getApiKey());
+    
     let interval: number;
     if (status !== GenerationStatus.IDLE && status !== GenerationStatus.COMPLETED && status !== GenerationStatus.ERROR) {
       interval = window.setInterval(() => {
@@ -67,18 +67,23 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [status]);
 
-  const handleOpenKeyDialog = async () => {
-    if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      // 这里的 API_KEY 会被自动注入，重新检测即可
-      const key = process.env.API_KEY;
-      setHasApiKey(!!key);
-    } else {
-      alert("请在 Vercel 环境变量中配置 API_KEY，然后点击 Redeploy 重新部署。");
+  const saveApiKey = () => {
+    if (tempApiKey.trim()) {
+      localStorage.setItem('ZENAI_API_KEY', tempApiKey.trim());
+      setCurrentApiKey(tempApiKey.trim());
+      setShowSettings(false);
+      setTempApiKey('');
     }
   };
 
+  const clearApiKey = () => {
+    localStorage.removeItem('ZENAI_API_KEY');
+    setCurrentApiKey(getApiKey());
+    setShowSettings(false);
+  };
+
   const processSingleItem = async (currentTheme: string) => {
+    setErrorInfo(null);
     setStatus(GenerationStatus.WRITING);
     setProgress(5);
     const script = await generateMeditationScript(currentTheme);
@@ -117,8 +122,8 @@ const App: React.FC = () => {
 
   const handleGenerate = async () => {
     if (!theme) return;
-    if (!hasApiKey) {
-      handleOpenKeyDialog();
+    if (!currentApiKey) {
+      setShowSettings(true);
       return;
     }
     try {
@@ -127,8 +132,8 @@ const App: React.FC = () => {
       setHistory(prev => [res, ...prev]);
       setStatus(GenerationStatus.COMPLETED);
     } catch (e: any) {
-      console.error("生成异常:", e);
-      alert(e.message || "生成失败，请重试。");
+      console.error("生成流程异常:", e);
+      setErrorInfo(e.message || "未知内部错误");
       setStatus(GenerationStatus.ERROR);
     }
   };
@@ -152,21 +157,66 @@ const App: React.FC = () => {
 
   const applyPreset = (prompt: string) => {
     setTheme(prompt);
+    setErrorInfo(null);
+    if (status === GenerationStatus.ERROR) setStatus(GenerationStatus.IDLE);
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
-      {/* 密钥配置警告 - 仅在缺失时显示 */}
-      {!hasApiKey && (
-        <div className="fixed top-0 left-0 w-full bg-amber-500 text-white py-2 px-4 z-50 flex items-center justify-center text-xs font-bold gap-4 shadow-lg animate-in slide-in-from-top duration-500">
-          <AlertCircle className="w-4 h-4" /> 
-          检测到 API_KEY 尚未生效。如果您已在 Vercel 配置，请点击右侧按钮。
-          <button 
-            onClick={handleOpenKeyDialog}
-            className="bg-white text-amber-600 px-3 py-1 rounded-md hover:bg-amber-50 transition-colors flex items-center gap-1"
-          >
-            <Settings className="w-3 h-3" /> 激活密钥
-          </button>
+      {/* 设置模态框 */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowSettings(false)}></div>
+          <div className="relative glass p-8 md:p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-300">
+            <button onClick={() => setShowSettings(false)} className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="flex flex-col items-center mb-8">
+              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4">
+                <Key className="w-8 h-8 text-indigo-500" />
+              </div>
+              <h3 className="text-2xl font-serif font-bold text-slate-900">配置 API Key</h3>
+              <p className="text-slate-400 text-xs mt-2 text-center leading-relaxed">
+                您的 Key 将仅加密存储在浏览器本地缓存中。如果频繁遇到 500 错误，请检查 Key 的有效性或余额。
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">密钥串</label>
+                <input 
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full px-5 py-4 rounded-2xl border-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white shadow-inner text-sm"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={saveApiKey}
+                  disabled={!tempApiKey.trim()}
+                  className={`flex-1 py-4 rounded-xl font-bold text-sm shadow-md transition-all ${tempApiKey.trim() ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}
+                >
+                  保存并启用
+                </button>
+                {localStorage.getItem('ZENAI_API_KEY') && (
+                  <button 
+                    onClick={clearApiKey}
+                    className="px-6 py-4 rounded-xl font-bold text-sm bg-white border border-slate-100 text-red-400 hover:bg-red-50 transition-all"
+                  >
+                    重置
+                  </button>
+                )}
+              </div>
+              
+              <p className="text-[9px] text-slate-300 text-center pt-2">
+                没有 Key? 前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 underline hover:text-indigo-600">Google AI Studio</a> 免费获取。
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -176,7 +226,14 @@ const App: React.FC = () => {
         <div className="absolute bottom-[-5%] left-[-5%] w-[500px] h-[500px] bg-teal-50/50 rounded-full blur-[90px] breathing-glow" style={{animationDelay: '2s'}}></div>
       </div>
 
-      <header className="text-center mb-16 md:mb-24">
+      <header className="text-center mb-16 md:mb-24 relative">
+        <button 
+          onClick={() => setShowSettings(true)}
+          className="absolute top-0 right-0 p-3 rounded-full bg-white/80 shadow-sm border border-slate-100 text-slate-400 hover:text-indigo-500 hover:shadow-md transition-all"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+
         <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/80 border border-slate-100 text-slate-500 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 shadow-sm">
           <ShieldCheck className="w-3.5 h-3.5 mr-2 text-indigo-500" /> Professional ZenAI Studio
         </div>
@@ -196,7 +253,16 @@ const App: React.FC = () => {
               <span className="flex items-center">
                 <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
               </span>
-              <div className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'}`} title={hasApiKey ? "密钥已连接" : "密钥待激活"}></div>
+              <div 
+                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-bold transition-all ${currentApiKey ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600 cursor-pointer'}`}
+                onClick={() => !currentApiKey && setShowSettings(true)}
+              >
+                {currentApiKey ? (
+                  <><CheckCircle2 className="w-3 h-3" /> API 就绪</>
+                ) : (
+                  <><AlertCircle className="w-3 h-3" /> 需要配置</>
+                )}
+              </div>
             </h2>
             
             <div className="space-y-8">
@@ -222,7 +288,10 @@ const App: React.FC = () => {
                   rows={3}
                   placeholder="用您最舒适的语言描述冥想目标..."
                   value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
+                  onChange={(e) => {
+                    setTheme(e.target.value);
+                    if (status === GenerationStatus.ERROR) setStatus(GenerationStatus.IDLE);
+                  }}
                 />
               </section>
 
@@ -284,11 +353,13 @@ const App: React.FC = () => {
                     : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
                   }`}
                 >
-                  {status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED || status === GenerationStatus.ERROR ? (
+                  {!currentApiKey ? (
+                    <><Key className="w-5 h-5 mr-3" /> 请先配置 API Key</>
+                  ) : (status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED || status === GenerationStatus.ERROR ? (
                     <><RefreshCw className="w-5 h-5 mr-3" /> 生成专属冥想</>
                   ) : (
                     <><RefreshCw className="w-5 h-5 mr-3 animate-spin" /> {progress}% 处理中</>
-                  )}
+                  ))}
                 </button>
               </div>
 
@@ -305,8 +376,30 @@ const App: React.FC = () => {
               )}
 
               {status === GenerationStatus.ERROR && (
-                <div className="flex items-center justify-center p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-medium border border-red-100">
-                  <AlertCircle className="w-4 h-4 mr-2" /> 生成异常，请确保 API 密钥已正确配置并重试。
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="p-5 bg-red-50 text-red-600 rounded-[1.5rem] border border-red-100">
+                    <div className="flex items-start mb-2">
+                      <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-bold mb-1">服务暂时波动 (Internal Error)</p>
+                        <p className="text-[11px] leading-relaxed opacity-80">{errorInfo || "Gemini API 发生了 500 内部错误。这通常是由于服务端负载过高或试验性模型波动引起的。"}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <button 
+                        onClick={handleGenerate}
+                        className="px-4 py-2 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 transition-colors"
+                      >
+                        重新尝试
+                      </button>
+                      <button 
+                        onClick={() => setShowSettings(true)}
+                        className="px-4 py-2 bg-white text-red-600 border border-red-100 rounded-lg text-[10px] font-bold hover:bg-red-100 transition-colors"
+                      >
+                        检查设置
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -388,6 +481,14 @@ const App: React.FC = () => {
               <p className="text-slate-400/60 max-w-xs text-center leading-relaxed text-sm font-light">
                 请输入您的冥想意图，ZenAI 将为您编织一段专属的深度放松之旅。
               </p>
+              {!currentApiKey && (
+                <button 
+                  onClick={() => setShowSettings(true)}
+                  className="mt-8 px-6 py-3 rounded-full bg-indigo-50 text-indigo-600 font-bold text-xs hover:bg-indigo-100 transition-all flex items-center"
+                >
+                  <Settings className="w-4 h-4 mr-2" /> 配置 API Key 以开始
+                </button>
+              )}
             </div>
           )}
         </div>
