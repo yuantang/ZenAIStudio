@@ -150,9 +150,29 @@ export const synthesizeSpeech = async (text: string, voiceName: string, retries 
 };
 
 /**
- * 为段落添加过渡标记文本
+ * 为段落添加上下文感知的过渡标记文本（根据段落类型智能选择）
  */
-const addTransitionMarker = (text: string, pauseSeconds: number): string => {
+const addTransitionMarker = (text: string, pauseSeconds: number, sectionType?: string): string => {
+  // 根据段落类型选择语义匹配的过渡语
+  if (sectionType === 'intro') {
+    return text + '\n\n……让我们先从呼吸开始，轻轻地，缓缓地……\n\n';
+  }
+  if (sectionType === 'breathing') {
+    return text + '\n\n……保持这份觉知……带着它，让我们继续向内探索……\n\n';
+  }
+  if (sectionType === 'body-scan') {
+    return text + '\n\n……感受全身的柔软与轻盈……现在，让意识自由地流动……\n\n';
+  }
+  if (sectionType === 'visualization') {
+    if (pauseSeconds >= 15) {
+      return text + '\n\n……在这份深邃的宁静中……安住在此……\n\n';
+    }
+    return text + '\n\n……让这份美好的意象继续在内心流淌……\n\n';
+  }
+  if (sectionType === 'silence') {
+    return text + '\n\n……\n\n';
+  }
+  // 通用过渡
   if (pauseSeconds >= 15) {
     return text + '\n\n……现在，请在这片宁静中，安静地与自己相处……\n\n';
   } else if (pauseSeconds >= 8) {
@@ -224,7 +244,7 @@ export const synthesizeFullMeditation = async (
   const sectionTexts = script.sections.map((section, idx) => {
     let text = section.content;
     if (idx < script.sections.length - 1) {
-      text = addTransitionMarker(text, section.pauseSeconds || 3);
+      text = addTransitionMarker(text, section.pauseSeconds || 3, section.type);
     }
     return text;
   });

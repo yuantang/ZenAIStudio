@@ -546,14 +546,14 @@ function getDominantAmbientHint(sections?: { ambientHint?: string }[]): string {
 
 /**
  * ============================================================
- *  主混音函数（商用级）
- *  特性：混响+EQ / crossfade循环 / 颂钵仪式 / 双耳节拍 / 多层声境 / 动态ducking
+ *  主混音函数（商用级 v2）
+ *  v2 升级：段落级声境切换 / soft limiter / 过渡铃声 / 三段双耳节拍
  * ============================================================
  */
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
   bgMusicUrl: string,
-  scriptSections?: { ambientHint?: string }[]
+  scriptSections?: { ambientHint?: string; pauseSeconds?: number }[]
 ): Promise<Blob> {
   const sampleRate = 44100;
   const BGM_BASE_GAIN = 0.18;
@@ -571,6 +571,17 @@ export async function mixSingleVoiceAudio(
   const totalDuration = voiceEndTime + outroGap + bowlOutroDuration + fadeOutTail;
   
   const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
+
+  // ────────────────────────────────────────────
+  // 0. 主总线 Soft Limiter（防止多层叠加削波）
+  // ────────────────────────────────────────────
+  const masterLimiter = offlineCtx.createDynamicsCompressor();
+  masterLimiter.threshold.value = -3.0;   // 超过 -3dB 开始压缩
+  masterLimiter.knee.value = 6.0;         // 柔和转折
+  masterLimiter.ratio.value = 12.0;       // 高压缩比 ≈ limiter
+  masterLimiter.attack.value = 0.003;     // 3ms 极快响应
+  masterLimiter.release.value = 0.25;     // 250ms 释放
+  masterLimiter.connect(offlineCtx.destination);
 
   // ────────────────────────────────────────────
   // 1. 背景音乐轨道（含 CORS 兜底 + crossfade 循环）
@@ -611,7 +622,7 @@ export async function mixSingleVoiceAudio(
     bgGain.gain.setValueAtTime(BGM_BASE_GAIN, fadeStart);
     bgGain.gain.linearRampToValueAtTime(0, totalDuration);
 
-    bgSource.connect(bgGain).connect(offlineCtx.destination);
+    bgSource.connect(bgGain).connect(masterLimiter);
     bgSource.start(0);
   }
 
@@ -625,8 +636,8 @@ export async function mixSingleVoiceAudio(
   const introSrc = offlineCtx.createBufferSource();
   introSrc.buffer = introSB;
   const introGain = offlineCtx.createGain();
-  introGain.gain.value = 1.0;
-  introSrc.connect(introGain).connect(offlineCtx.destination);
+  introGain.gain.value = 0.9;
+  introSrc.connect(introGain).connect(masterLimiter);
   introSrc.start(0);
 
   // 结束颂钵（略高频 330Hz，明亮唤醒）
@@ -634,8 +645,8 @@ export async function mixSingleVoiceAudio(
   const outroSrc = offlineCtx.createBufferSource();
   outroSrc.buffer = outroSB;
   const outroGain = offlineCtx.createGain();
-  outroGain.gain.value = 0.8;
-  outroSrc.connect(outroGain).connect(offlineCtx.destination);
+  outroGain.gain.value = 0.7;
+  outroSrc.connect(outroGain).connect(masterLimiter);
   outroSrc.start(voiceEndTime + outroGap);
 
   // ────────────────────────────────────────────
@@ -675,42 +686,112 @@ export async function mixSingleVoiceAudio(
   voiceEnvelope.gain.setValueAtTime(1, voiceEndTime - 1.5);
   voiceEnvelope.gain.linearRampToValueAtTime(0, voiceEndTime);
 
-  // 信号链: source → EQ → envelope → (dry + wet/reverb) → destination
+  // 信号链: source → EQ → envelope → (dry + wet/reverb) → limiter
   vSource.connect(warmEQ).connect(deEss).connect(voiceEnvelope);
-  voiceEnvelope.connect(dryGain).connect(offlineCtx.destination);
-  voiceEnvelope.connect(convolver).connect(wetGain).connect(offlineCtx.destination);
+  voiceEnvelope.connect(dryGain).connect(masterLimiter);
+  voiceEnvelope.connect(convolver).connect(wetGain).connect(masterLimiter);
   vSource.start(voiceStartTime);
 
   // ────────────────────────────────────────────
-  // 4. 双耳节拍（Alpha → Theta 渐变）
+  // 4. 三段双耳节拍（Alpha → Theta → Delta 渐变）
   // ────────────────────────────────────────────
-  console.log("[Mixing] 注入双耳节拍...");
+  console.log("[Mixing] 注入三段双耳节拍...");
   
-  const binauralDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
-  // 开始用 Alpha 波（10Hz 放松），后半段过渡到 Theta 波（6Hz 深度冥想）
-  const halfPoint = binauralDuration / 2;
+  const binauralTotalDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
+  const thirdPoint = binauralTotalDuration / 3;
   
-  // 前半段：Alpha 波 (10Hz)
-  addBinauralBeats(offlineCtx, voiceStartTime, halfPoint, 180, 10);
-  // 后半段：Theta 波 (6Hz)
-  addBinauralBeats(offlineCtx, voiceStartTime + halfPoint, binauralDuration - halfPoint, 180, 6);
+  // 第一段：Alpha 波 (10Hz 放松清醒)
+  addBinauralBeats(offlineCtx, voiceStartTime, thirdPoint, 180, 10);
+  // 第二段：Theta 波 (6Hz 深度冥想)
+  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 180, 6);
+  // 第三段：Low Theta/Delta 边缘 (4Hz 超深度/入眠)
+  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 180, 4);
 
   // ────────────────────────────────────────────
-  // 5. 多层声境纹理（根据 AI 的 ambientHint 自适应）
+  // 5. 段落级声境纹理（根据每段 ambientHint 动态切换 + crossfade）
   // ────────────────────────────────────────────
-  const dominantHint = getDominantAmbientHint(scriptSections);
-  console.log(`[Mixing] 生成声境纹理: ${dominantHint}`);
-  const textureBuffer = generateAmbientTexture(offlineCtx, dominantHint, totalDuration);
-  const textureSrc = offlineCtx.createBufferSource();
-  textureSrc.buffer = textureBuffer;
-  const textureGain = offlineCtx.createGain();
-  // 纹理层柔和渐入渐出
-  textureGain.gain.setValueAtTime(0, 0);
-  textureGain.gain.linearRampToValueAtTime(1, 3.0);
-  textureGain.gain.setValueAtTime(1, totalDuration - fadeOutTail);
-  textureGain.gain.linearRampToValueAtTime(0, totalDuration);
-  textureSrc.connect(textureGain).connect(offlineCtx.destination);
-  textureSrc.start(0);
+  console.log("[Mixing] 生成段落级声境纹理...");
+  
+  if (scriptSections && scriptSections.length > 0) {
+    // 估算每段在时间线上的位置（按 content 字数比例分配语音时长）
+    const totalChars = scriptSections.reduce((s, sec) => s + ((sec as any).content?.length || 100), 0);
+    let currentPos = voiceStartTime;
+    
+    const sectionTimings: { start: number; end: number; hint: string }[] = [];
+    
+    scriptSections.forEach((sec, i) => {
+      const charLen = (sec as any).content?.length || 100;
+      const voiceDur = (charLen / totalChars) * voiceBuffer.duration;
+      const pauseDur = sec.pauseSeconds || 3;
+      const sectionEnd = currentPos + voiceDur + pauseDur;
+      
+      sectionTimings.push({
+        start: currentPos,
+        end: Math.min(sectionEnd, voiceEndTime + outroGap),
+        hint: sec.ambientHint || 'forest',
+      });
+      currentPos = sectionEnd;
+    });
+
+    console.log(`[Mixing] 段落声境: ${sectionTimings.map(s => `${s.hint}(${s.start.toFixed(1)}-${s.end.toFixed(1)}s)`).join(' → ')}`);
+
+    // 为每个段落生成独立的声境纹理并叠加
+    const crossfadeDur = 2.0; // 2秒 crossfade 过渡
+    
+    sectionTimings.forEach((timing, i) => {
+      const dur = timing.end - timing.start;
+      if (dur <= 0) return;
+      
+      const textureBuffer = generateAmbientTexture(offlineCtx, timing.hint, dur + crossfadeDur);
+      const src = offlineCtx.createBufferSource();
+      src.buffer = textureBuffer;
+      const gainNode = offlineCtx.createGain();
+      
+      // 每段纹理柔和渐入渐出（crossfade 效果）
+      const fadeIn = i === 0 ? 3.0 : crossfadeDur;
+      const fadeOut = i === sectionTimings.length - 1 ? fadeOutTail : crossfadeDur;
+      
+      gainNode.gain.setValueAtTime(0, timing.start);
+      gainNode.gain.linearRampToValueAtTime(1, timing.start + fadeIn);
+      gainNode.gain.setValueAtTime(1, timing.end - fadeOut);
+      gainNode.gain.linearRampToValueAtTime(0, timing.end);
+      
+      src.connect(gainNode).connect(masterLimiter);
+      src.start(timing.start);
+    });
+
+    // ────────────────────────────────────────────
+    // 5.5 段落过渡铃声（在段落切换点插入微妙的水晶铃）
+    // ────────────────────────────────────────────
+    for (let i = 1; i < sectionTimings.length; i++) {
+      const transitionTime = sectionTimings[i].start;
+      // 跳过 silence 段和最后一段的过渡铃
+      const prevHint = sectionTimings[i - 1].hint;
+      if (prevHint === 'silence') continue;
+      
+      const bellBuffer = generateTransitionBell(offlineCtx, 2.5, 1200 + i * 100);
+      const bellSrc = offlineCtx.createBufferSource();
+      bellSrc.buffer = bellBuffer;
+      const bellGain = offlineCtx.createGain();
+      bellGain.gain.value = 0.5;
+      bellSrc.connect(bellGain).connect(masterLimiter);
+      bellSrc.start(Math.max(0, transitionTime - 0.5));
+    }
+  } else {
+    // 降级：无段落信息时使用单一声境
+    const dominantHint = getDominantAmbientHint(scriptSections);
+    console.log(`[Mixing] 生成单一声境纹理: ${dominantHint}`);
+    const textureBuffer = generateAmbientTexture(offlineCtx, dominantHint, totalDuration);
+    const textureSrc = offlineCtx.createBufferSource();
+    textureSrc.buffer = textureBuffer;
+    const textureGain = offlineCtx.createGain();
+    textureGain.gain.setValueAtTime(0, 0);
+    textureGain.gain.linearRampToValueAtTime(1, 3.0);
+    textureGain.gain.setValueAtTime(1, totalDuration - fadeOutTail);
+    textureGain.gain.linearRampToValueAtTime(0, totalDuration);
+    textureSrc.connect(textureGain).connect(masterLimiter);
+    textureSrc.start(0);
+  }
 
   // ────────────────────────────────────────────
   // 6. 离线渲染
@@ -720,4 +801,5 @@ export async function mixSingleVoiceAudio(
   console.log("[Mixing] 渲染完成！");
   return bufferToWav(renderedBuffer);
 }
+
 
