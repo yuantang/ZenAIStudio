@@ -20,8 +20,13 @@ import { BACKGROUND_TRACKS, VOICES, MEDITATION_PRESETS } from "./constants";
 import {
   generateMeditationScript,
   synthesizeSpeech,
+  synthesizeFullMeditation,
 } from "./services/geminiService";
-import { decodePcm, mixMeditationAudio } from "./services/audioService";
+import {
+  decodePcm,
+  mixMeditationAudio,
+  mixSingleVoiceAudio,
+} from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 
 const LOADING_MESSAGES = [
@@ -88,28 +93,22 @@ const App: React.FC = () => {
     setProgress(20);
 
     setStatus(GenerationStatus.VOICING);
-    const voiceBuffers: AudioBuffer[] = [];
-    const pauses: number[] = [];
+    setProgress(30);
+
+    // 整篇合成：单次 TTS 调用确保全程声纹一致
+    const rawPcm = await synthesizeFullMeditation(script, selectedVoice);
+    setProgress(75);
+
     const ctx = new (
       window.AudioContext || (window as any).webkitAudioContext
     )();
-
-    for (let i = 0; i < script.sections.length; i++) {
-      const section = script.sections[i];
-      const rawPcm = await synthesizeSpeech(section.content, selectedVoice);
-      const decoded = await decodePcm(rawPcm, ctx);
-      voiceBuffers.push(decoded);
-      pauses.push(section.pauseSeconds);
-
-      const stepProgress =
-        20 + Math.floor(((i + 1) / script.sections.length) * 65);
-      setProgress(stepProgress);
-    }
+    const voiceBuffer = await decodePcm(rawPcm, ctx);
     await ctx.close();
+    setProgress(80);
 
     setStatus(GenerationStatus.MIXING);
     const track = BACKGROUND_TRACKS.find((t) => t.id === selectedBG)!;
-    const finalBlob = await mixMeditationAudio(voiceBuffers, pauses, track.url);
+    const finalBlob = await mixSingleVoiceAudio(voiceBuffer, track.url);
 
     setProgress(100);
     return {

@@ -114,3 +114,70 @@ export const synthesizeSpeech = async (text: string, voiceName: string, retries 
     throw error;
   }
 };
+
+/**
+ * 整篇冥想脚本一次性合成：将所有段落合并为连贯文本，单次 TTS 调用确保声纹一致
+ */
+export const synthesizeFullMeditation = async (
+  script: MeditationScript, 
+  voiceName: string, 
+  retries = 2
+): Promise<Uint8Array> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("API_KEY 尚未配置。");
+  }
+
+  // 将所有段落合并为一个连贯的文本，段落间嵌入自然停顿标记
+  const fullText = script.sections.map((section, idx) => {
+    let text = section.content;
+    // 在段落之间插入呼吸停顿标记，让 TTS 自然处理过渡
+    if (idx < script.sections.length - 1) {
+      const pauseDuration = section.pauseSeconds || 3;
+      if (pauseDuration >= 15) {
+        // 长停顿：深度静默意象
+        text += '\n\n……现在，请在这片宁静中，安静地与自己相处……\n\n';
+      } else if (pauseDuration >= 8) {
+        // 中等停顿：呼吸过渡
+        text += '\n\n……深深地吸气……缓缓地呼出……\n\n';
+      } else {
+        // 短停顿：自然衔接
+        text += '\n\n……\n\n';
+      }
+    }
+    return text;
+  }).join('');
+
+  const ai = new GoogleGenAI({ apiKey });
+  const targetVoice = voiceName || 'Zephyr';
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: fullText }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { 
+              voiceName: targetVoice 
+            }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+      throw new Error("TTS 引擎未能返回音频数据。");
+    }
+
+    return decodeBase64(base64Audio);
+  } catch (error: any) {
+    if (retries > 0) {
+      await wait(2000);
+      return synthesizeFullMeditation(script, voiceName, retries - 1);
+    }
+    throw error;
+  }
+};

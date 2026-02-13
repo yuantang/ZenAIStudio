@@ -64,25 +64,25 @@ export const BACKGROUND_TRACKS: BackgroundTrack[] = [
   { 
     id: 'zen-forest', 
     name: '幽静森林', 
-    url: 'https://raw.githubusercontent.com/ZaneH/nature-sounds/master/public/sounds/forest.mp3',
+    url: 'https://assets.mixkit.co/active_storage/sfx/2432/2432-preview.mp3',
     icon: '🌳'
   },
   { 
     id: 'deep-rain', 
     name: '冥想之雨', 
-    url: 'https://raw.githubusercontent.com/ZaneH/nature-sounds/master/public/sounds/rain.mp3',
+    url: 'https://assets.mixkit.co/active_storage/sfx/2515/2515-preview.mp3',
     icon: '🌧️'
   },
   { 
     id: 'ocean-waves', 
     name: '潮汐韵律', 
-    url: 'https://raw.githubusercontent.com/ZaneH/nature-sounds/master/public/sounds/ocean.mp3',
+    url: 'https://assets.mixkit.co/active_storage/sfx/2417/2417-preview.mp3',
     icon: '🌊'
   },
   {
     id: 'white-noise',
     name: '暖心壁炉',
-    url: 'https://raw.githubusercontent.com/ZaneH/nature-sounds/master/public/sounds/fire.mp3',
+    url: 'https://assets.mixkit.co/active_storage/sfx/2527/2527-preview.mp3',
     icon: '🔥'
   }
 ];

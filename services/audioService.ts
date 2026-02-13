@@ -166,3 +166,85 @@ function bufferToWav(buffer: AudioBuffer): Blob {
   }
   return new Blob([outBuffer], { type: "audio/wav" });
 }
+
+/**
+ * 单语音混音：接收单个连续的语音 Buffer，与背景音乐合成
+ * 适用于整篇文本一次性 TTS 合成后的混音场景
+ */
+export async function mixSingleVoiceAudio(
+  voiceBuffer: AudioBuffer,
+  bgMusicUrl: string
+): Promise<Blob> {
+  const sampleRate = 44100;
+  const BGM_BASE_GAIN = 0.20;
+  const BGM_DUCKED_GAIN = 0.06;
+  const VOICE_GAIN = 1.0;
+  
+  // 前奏 5s + 语音 + 结尾渐出 10s
+  const voiceStartTime = 5.0;
+  const totalDuration = voiceStartTime + voiceBuffer.duration + 10.0;
+  const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
+
+  // 1. 加载背景音乐
+  let bgBuffer: AudioBuffer | null = null;
+  try {
+    const resp = await fetch(bgMusicUrl, { mode: 'cors', credentials: 'omit' });
+    if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
+    const ab = await resp.arrayBuffer();
+    bgBuffer = await offlineCtx.decodeAudioData(ab);
+  } catch (e) {
+    console.warn("[Mixing] 背景音乐加载失败，使用纯净模式:", e);
+  }
+
+  // 2. 背景音乐轨道（含 ducking）
+  if (bgBuffer) {
+    const bgSource = offlineCtx.createBufferSource();
+    bgSource.buffer = bgBuffer;
+    bgSource.loop = true;
+    const bgGainNode = offlineCtx.createGain();
+
+    // 前奏渐入
+    bgGainNode.gain.setValueAtTime(0, 0);
+    bgGainNode.gain.linearRampToValueAtTime(BGM_BASE_GAIN, voiceStartTime);
+
+    // 人声开始 → duck down (1.5s 平滑过渡)
+    bgGainNode.gain.setValueAtTime(BGM_BASE_GAIN, voiceStartTime);
+    bgGainNode.gain.exponentialRampToValueAtTime(BGM_DUCKED_GAIN, voiceStartTime + 1.5);
+
+    // 人声结束 → 恢复 (3s 平滑过渡)
+    const voiceEndTime = voiceStartTime + voiceBuffer.duration;
+    bgGainNode.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
+    bgGainNode.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
+
+    // 结尾渐出
+    const fadeOutStart = totalDuration - 8.0;
+    bgGainNode.gain.setValueAtTime(BGM_BASE_GAIN, fadeOutStart);
+    bgGainNode.gain.linearRampToValueAtTime(0, totalDuration);
+
+    bgSource.connect(bgGainNode);
+    bgGainNode.connect(offlineCtx.destination);
+    bgSource.start(0);
+  }
+
+  // 3. 语音轨道（平滑淡入淡出）
+  const vSource = offlineCtx.createBufferSource();
+  vSource.buffer = voiceBuffer;
+  const vGain = offlineCtx.createGain();
+
+  // 0.8s 淡入
+  vGain.gain.setValueAtTime(0, voiceStartTime);
+  vGain.gain.linearRampToValueAtTime(VOICE_GAIN, voiceStartTime + 0.8);
+
+  // 1.5s 淡出
+  const voiceEndTime = voiceStartTime + voiceBuffer.duration;
+  vGain.gain.setValueAtTime(VOICE_GAIN, voiceEndTime - 1.5);
+  vGain.gain.linearRampToValueAtTime(0, voiceEndTime);
+
+  vSource.connect(vGain);
+  vGain.connect(offlineCtx.destination);
+  vSource.start(voiceStartTime);
+
+  // 4. 离线渲染
+  const renderedBuffer = await offlineCtx.startRendering();
+  return bufferToWav(renderedBuffer);
+}
