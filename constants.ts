@@ -1,5 +1,5 @@
 
-import { BackgroundTrack } from './types';
+import { BackgroundTrack, ExperienceLevel, MoodState, MeditationStyle } from './types';
 
 export const SYSTEM_PROMPT = `
 你是一名拥有10年以上经验的顶级冥想引导大师、心理疗愈专家。
@@ -48,10 +48,20 @@ JSON 格式要求：
 {
   "title": "富有灵性深度且吸引人的标题",
   "sections": [
-    { "type": "intro", "content": "内容...", "pauseSeconds": 8 },
-    ...
+    { "type": "intro", "content": "内容...", "pauseSeconds": 8, "ambientHint": "forest" },
+    { "type": "breathing", "content": "...", "pauseSeconds": 5, "ambientHint": "ocean" },
+    { "type": "body-scan", "content": "...", "pauseSeconds": 3, "ambientHint": "rain" },
+    { "type": "visualization", "content": "...", "pauseSeconds": 5, "ambientHint": "forest" },
+    { "type": "silence", "content": "（此处为神圣寂静）", "pauseSeconds": 25, "ambientHint": "silence" },
+    { "type": "outro", "content": "...", "pauseSeconds": 0, "ambientHint": "space" }
   ]
 }
+
+注意：
+- type 必须从以下值中选择：intro, breathing, body-scan, visualization, silence, outro
+- ambientHint 必须为每个段落指定，从以下值选择：forest, rain, ocean, fire, space, silence
+- ambientHint 应该与段落内容的意象高度匹配
+- silence 类型用于"神圣寂静"段落，content 可以简短或空
 `;
 
 export const TTS_SYSTEM_INSTRUCTION = `
@@ -138,4 +148,25 @@ export const MEDITATION_PRESETS = [
     icon: '🎈',
     prompt: '连接内在小孩：穿越时空的迷雾，与那个渴望被爱、被看见的童年自我对话，通过慈悲的拥抱和接纳，修复深层的心理创伤。'
   }
+];
+
+export const EXPERIENCE_OPTIONS: { id: ExperienceLevel; label: string; icon: string; description: string }[] = [
+  { id: 'beginner', label: '初学者', icon: '🌱', description: '温和引导' },
+  { id: 'intermediate', label: '有经验', icon: '🧘', description: '适度深入' },
+  { id: 'advanced', label: '深度修行', icon: '🔮', description: '深层探索' },
+];
+
+export const MOOD_OPTIONS: { id: MoodState; label: string; icon: string }[] = [
+  { id: 'anxious', label: '焦虑不安', icon: '😰' },
+  { id: 'sad', label: '低落消沉', icon: '😔' },
+  { id: 'restless', label: '烦躁浮动', icon: '😤' },
+  { id: 'tired', label: '疲惫乏力', icon: '😴' },
+  { id: 'neutral', label: '平静日常', icon: '😌' },
+];
+
+export const STYLE_OPTIONS: { id: MeditationStyle; label: string; icon: string }[] = [
+  { id: 'mindfulness', label: '正念觉察', icon: '🧠' },
+  { id: 'zen', label: '东方禅修', icon: '☯️' },
+  { id: 'yoga-nidra', label: '瑜伽尼德拉', icon: '🕉️' },
+  { id: 'compassion', label: '慈悲疗愈', icon: '💜' },
 ];

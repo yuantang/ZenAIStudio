@@ -1,11 +1,23 @@
 
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type MoodState = 'anxious' | 'sad' | 'restless' | 'tired' | 'neutral';
+export type MeditationStyle = 'mindfulness' | 'zen' | 'yoga-nidra' | 'compassion';
+export type AmbientHint = 'forest' | 'rain' | 'ocean' | 'fire' | 'space' | 'silence';
+
+export interface MeditationPersonalization {
+  experience: ExperienceLevel;
+  mood: MoodState;
+  style: MeditationStyle;
+}
+
 export interface MeditationScript {
   title: string;
   sections: {
-    type: 'intro' | 'breathing' | 'body-scan' | 'visualization' | 'outro';
+    type: 'intro' | 'breathing' | 'body-scan' | 'visualization' | 'silence' | 'outro';
     content: string;
-    // pauseSeconds specifies the duration of silence in seconds to follow this section
     pauseSeconds: number;
+    /** AI 建议的该段理想声境 */
+    ambientHint?: AmbientHint;
   }[];
 }
 

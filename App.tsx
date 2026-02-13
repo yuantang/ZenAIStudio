@@ -16,12 +16,21 @@ import {
   Settings,
   BookOpen,
 } from "lucide-react";
-import { GenerationStatus, MeditationResult } from "./types";
+import {
+  GenerationStatus,
+  MeditationResult,
+  ExperienceLevel,
+  MoodState,
+  MeditationStyle,
+} from "./types";
 import {
   BACKGROUND_TRACKS,
   VOICES,
   MEDITATION_PRESETS,
   DURATION_OPTIONS,
+  EXPERIENCE_OPTIONS,
+  MOOD_OPTIONS,
+  STYLE_OPTIONS,
 } from "./constants";
 import {
   generateMeditationScript,
@@ -111,6 +120,12 @@ const App: React.FC = () => {
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
   const [selectedDuration, setSelectedDuration] = useState(10);
+  const [selectedExperience, setSelectedExperience] =
+    useState<ExperienceLevel>("intermediate");
+  const [selectedMood, setSelectedMood] = useState<MoodState>("neutral");
+  const [selectedStyle, setSelectedStyle] =
+    useState<MeditationStyle>("mindfulness");
+  const [showPersonalization, setShowPersonalization] = useState(false);
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
@@ -164,6 +179,11 @@ const App: React.FC = () => {
     const script = await generateMeditationScript(
       currentTheme,
       selectedDuration,
+      {
+        experience: selectedExperience,
+        mood: selectedMood,
+        style: selectedStyle,
+      },
     );
     setProgress(20);
 
@@ -183,7 +203,11 @@ const App: React.FC = () => {
 
     setStatus(GenerationStatus.MIXING);
     const track = BACKGROUND_TRACKS.find((t) => t.id === selectedBG)!;
-    const finalBlob = await mixSingleVoiceAudio(voiceBuffer, track.url);
+    const finalBlob = await mixSingleVoiceAudio(
+      voiceBuffer,
+      track.url,
+      script.sections,
+    );
 
     setProgress(100);
     return {
@@ -354,6 +378,102 @@ const App: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              </section>
+
+              <section>
+                <button
+                  onClick={() => setShowPersonalization(!showPersonalization)}
+                  className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em] hover:text-indigo-500 transition-colors"
+                >
+                  <span className="flex items-center">
+                    <Settings className="w-4 h-4 mr-2" /> 个性化定制 /
+                    Personalize
+                  </span>
+                  <span
+                    className={`text-xs transition-transform ${showPersonalization ? "rotate-180" : ""}`}
+                  >
+                    ▼
+                  </span>
+                </button>
+
+                {showPersonalization && (
+                  <div className="space-y-4 animate-in slide-in-from-top-2">
+                    {/* 经验等级 */}
+                    <div>
+                      <div className="text-[9px] text-slate-400 font-bold mb-2">
+                        🧘 冥想经验
+                      </div>
+                      <div className="flex gap-2">
+                        {EXPERIENCE_OPTIONS.map((e) => (
+                          <button
+                            key={e.id}
+                            onClick={() => setSelectedExperience(e.id)}
+                            className={`flex-1 flex flex-col items-center p-2.5 rounded-xl border transition-all text-center ${
+                              selectedExperience === e.id
+                                ? "bg-violet-50 border-violet-200 shadow-sm"
+                                : "bg-white/40 border-slate-50 hover:border-violet-100"
+                            }`}
+                          >
+                            <span className="text-base mb-0.5">{e.icon}</span>
+                            <span className="text-[9px] font-bold text-slate-600">
+                              {e.label}
+                            </span>
+                            <span className="text-[7px] text-slate-400">
+                              {e.description}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 当前情绪 */}
+                    <div>
+                      <div className="text-[9px] text-slate-400 font-bold mb-2">
+                        💭 当前情绪
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {MOOD_OPTIONS.map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => setSelectedMood(m.id)}
+                            className={`px-3 py-1.5 rounded-full border text-[9px] font-bold transition-all ${
+                              selectedMood === m.id
+                                ? "bg-amber-50 border-amber-200 text-amber-700"
+                                : "bg-white/40 border-slate-50 text-slate-500 hover:border-amber-100"
+                            }`}
+                          >
+                            {m.icon} {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 冥想风格 */}
+                    <div>
+                      <div className="text-[9px] text-slate-400 font-bold mb-2">
+                        ✨ 冥想风格
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {STYLE_OPTIONS.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => setSelectedStyle(s.id)}
+                            className={`flex items-center p-2.5 rounded-xl border transition-all ${
+                              selectedStyle === s.id
+                                ? "bg-emerald-50 border-emerald-200 shadow-sm"
+                                : "bg-white/40 border-slate-50 hover:border-emerald-100"
+                            }`}
+                          >
+                            <span className="text-base mr-2">{s.icon}</span>
+                            <span className="text-[9px] font-bold text-slate-600">
+                              {s.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -406,14 +406,154 @@ function addBinauralBeats(
 }
 
 /**
+ * 生成自然声境纹理（纯前端合成）
+ * 根据 ambientHint 生成匹配的环境音层
+ */
+function generateAmbientTexture(
+  ctx: OfflineAudioContext,
+  hint: string,
+  duration: number
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(2, length, sampleRate);
+
+  switch (hint) {
+    case 'rain': {
+      // 雨声：密集的随机脉冲 + 低通滤波效果
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        let prev = 0;
+        for (let i = 0; i < length; i++) {
+          // 随机雨滴脉冲
+          const dropProbability = 0.002;
+          const drop = Math.random() < dropProbability ? (Math.random() * 0.3) : 0;
+          // 低通滤波模拟雨声"沙沙"质感
+          prev = prev * 0.97 + (Math.random() * 2 - 1 + drop) * 0.03;
+          data[i] = prev * 0.04;
+        }
+      }
+      break;
+    }
+    case 'ocean': {
+      // 海浪：低频正弦调制 + 噪声 = 起伏的浪涛
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        const waveFreq = 0.08 + ch * 0.01; // 左右微差，增加空间感
+        for (let i = 0; i < length; i++) {
+          const t = i / sampleRate;
+          // 慢速波浪包络
+          const wave = (Math.sin(2 * Math.PI * waveFreq * t) + 1) * 0.5;
+          const noise = Math.random() * 2 - 1;
+          data[i] = noise * wave * 0.035;
+        }
+      }
+      break;
+    }
+    case 'forest': {
+      // 森林：微风 + 偶尔的鸟鸣模拟（高频短脉冲）
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        let prev = 0;
+        for (let i = 0; i < length; i++) {
+          const t = i / sampleRate;
+          // 微风底噪
+          prev = prev * 0.995 + (Math.random() * 2 - 1) * 0.005;
+          let sample = prev * 0.03;
+          // 偶尔的鸟鸣碎音（每隔 8-15秒）
+          const birdCycle = 12 + ch * 3;
+          const birdPhase = (t % birdCycle) / birdCycle;
+          if (birdPhase > 0.95 && birdPhase < 0.98) {
+            const birdT = (birdPhase - 0.95) / 0.03;
+            sample += Math.sin(2 * Math.PI * (2000 + 500 * Math.sin(birdT * 20)) * t) 
+                      * Math.exp(-birdT * 5) * 0.01;
+          }
+          data[i] = sample;
+        }
+      }
+      break;
+    }
+    case 'fire': {
+      // 壁炉：低频噼啪 + 温暖噪底
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        let prev = 0;
+        for (let i = 0; i < length; i++) {
+          // 温暖噪底
+          prev = prev * 0.98 + (Math.random() * 2 - 1) * 0.02;
+          let sample = prev * 0.025;
+          // 偶尔的噼啪声
+          if (Math.random() < 0.0003) {
+            sample += (Math.random() * 2 - 1) * 0.08;
+          }
+          data[i] = sample;
+        }
+      }
+      break;
+    }
+    case 'space': {
+      // 宇宙：极缓慢的正弦波叠加，深邃辽远
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const t = i / sampleRate;
+          const sample = 
+            Math.sin(2 * Math.PI * 60 * t) * 0.008 +
+            Math.sin(2 * Math.PI * 90 * t + ch) * 0.006 +
+            Math.sin(2 * Math.PI * 0.05 * t) * Math.sin(2 * Math.PI * 120 * t) * 0.004;
+          data[i] = sample;
+        }
+      }
+      break;
+    }
+    default: {
+      // silence 或未知：极微弱的粉噪声
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let ch = 0; ch < 2; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99 * b0 + white * 0.01;
+          b1 = 0.96 * b1 + white * 0.04;
+          b2 = 0.80 * b2 + white * 0.20;
+          data[i] = (b0 + b1 + b2) * 0.002;
+        }
+      }
+    }
+  }
+  return buffer;
+}
+
+/**
+ * 从 script sections 中提取主要的 ambientHint（出现最多的）
+ */
+function getDominantAmbientHint(sections?: { ambientHint?: string }[]): string {
+  if (!sections || sections.length === 0) return 'forest';
+  const counts: Record<string, number> = {};
+  for (const s of sections) {
+    const hint = s.ambientHint || 'forest';
+    if (hint !== 'silence') {
+      counts[hint] = (counts[hint] || 0) + 1;
+    }
+  }
+  let maxHint = 'forest';
+  let maxCount = 0;
+  for (const [hint, count] of Object.entries(counts)) {
+    if (count > maxCount) { maxCount = count; maxHint = hint; }
+  }
+  return maxHint;
+}
+
+/**
  * ============================================================
  *  主混音函数（商用级）
- *  特性：混响+EQ / crossfade循环 / 颂钵仪式 / 双耳节拍 / 动态ducking
+ *  特性：混响+EQ / crossfade循环 / 颂钵仪式 / 双耳节拍 / 多层声境 / 动态ducking
  * ============================================================
  */
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
-  bgMusicUrl: string
+  bgMusicUrl: string,
+  scriptSections?: { ambientHint?: string }[]
 ): Promise<Blob> {
   const sampleRate = 44100;
   const BGM_BASE_GAIN = 0.18;
@@ -556,10 +696,28 @@ export async function mixSingleVoiceAudio(
   addBinauralBeats(offlineCtx, voiceStartTime + halfPoint, binauralDuration - halfPoint, 180, 6);
 
   // ────────────────────────────────────────────
-  // 5. 离线渲染
+  // 5. 多层声境纹理（根据 AI 的 ambientHint 自适应）
+  // ────────────────────────────────────────────
+  const dominantHint = getDominantAmbientHint(scriptSections);
+  console.log(`[Mixing] 生成声境纹理: ${dominantHint}`);
+  const textureBuffer = generateAmbientTexture(offlineCtx, dominantHint, totalDuration);
+  const textureSrc = offlineCtx.createBufferSource();
+  textureSrc.buffer = textureBuffer;
+  const textureGain = offlineCtx.createGain();
+  // 纹理层柔和渐入渐出
+  textureGain.gain.setValueAtTime(0, 0);
+  textureGain.gain.linearRampToValueAtTime(1, 3.0);
+  textureGain.gain.setValueAtTime(1, totalDuration - fadeOutTail);
+  textureGain.gain.linearRampToValueAtTime(0, totalDuration);
+  textureSrc.connect(textureGain).connect(offlineCtx.destination);
+  textureSrc.start(0);
+
+  // ────────────────────────────────────────────
+  // 6. 离线渲染
   // ────────────────────────────────────────────
   console.log(`[Mixing] 开始离线渲染 (${totalDuration.toFixed(1)}s)...`);
   const renderedBuffer = await offlineCtx.startRendering();
   console.log("[Mixing] 渲染完成！");
   return bufferToWav(renderedBuffer);
 }
+

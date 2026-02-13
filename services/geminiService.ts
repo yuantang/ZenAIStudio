@@ -1,7 +1,6 @@
-
 import { GoogleGenAI, Type, Modality, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { SYSTEM_PROMPT, TTS_SYSTEM_INSTRUCTION } from "../constants";
-import { MeditationScript } from "../types";
+import { MeditationScript, MeditationPersonalization } from "../types";
 
 function decodeBase64(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -14,16 +13,46 @@ function decodeBase64(base64: string): Uint8Array {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/** 个性化 prompt 片段生成 */
+const buildPersonalizationContext = (p?: MeditationPersonalization): string => {
+  if (!p) return '';
+  const expMap = {
+    beginner: '初学者（请使用简单直白的语言，多给引导提示，避免抽象概念）',
+    intermediate: '有一定冥想经验（可以使用适度深入的意象，引入觉察和身体感知）',
+    advanced: '深度修行者（可以使用深层意象、无我观照和高级觉知引导）',
+  };
+  const moodMap = {
+    anxious: '焦虑不安（重点引导呼吸放松和安全感建立，多用"你是安全的"类语句）',
+    sad: '低落消沉（语调温柔慈悲，重点引导自我接纳和情感释放）',
+    restless: '烦躁浮动（先通过身体感知锚定当下，再引导能量下沉）',
+    tired: '疲惫乏力（侧重深度放松和能量恢复，节奏更缓慢）',
+    neutral: '平静日常（标准冥想引导）',
+  };
+  const styleMap = {
+    mindfulness: '正念觉察（强调当下觉知、不评判的观察、回到呼吸）',
+    zen: '东方禅修（融入禅宗美学，空、寂、无的意境，山水意象）',
+    'yoga-nidra': '瑜伽尼德拉（渐进式身体旋转、意识在身体各部位流转、深度放松）',
+    compassion: '慈悲疗愈（慈心冥想，向自己和他人发送爱与善意）',
+  };
+  return `\n\n【用户个性化上下文】\n- 冥想经验：${expMap[p.experience]}\n- 当前情绪：${moodMap[p.mood]}\n- 偏好风格：${styleMap[p.style]}\n请根据以上用户状态，调整脚本的深度、语言风格和重点关注方向。`;
+};
+
 /**
  * 核心脚本生成器：利用 Gemini 3 Pro 生成具备临床深度和艺术美感的冥想剧本
  */
-export const generateMeditationScript = async (theme: string, durationMinutes: number = 10, retries = 2): Promise<MeditationScript> => {
+export const generateMeditationScript = async (
+  theme: string,
+  durationMinutes: number = 10,
+  personalization?: MeditationPersonalization,
+  retries = 2
+): Promise<MeditationScript> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error("API_KEY 尚未配置。");
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  const personCtx = buildPersonalizationContext(personalization);
   
   try {
     const response = await ai.models.generateContent({
@@ -31,7 +60,7 @@ export const generateMeditationScript = async (theme: string, durationMinutes: n
       contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏。
 
 【目标时长】：${durationMinutes} 分钟（请根据时长严格控制内容篇幅和段落数量，语音朗读总时长加上停顿时间应尽可能接近 ${durationMinutes} 分钟）
-
+${personCtx}
 主题：${theme}`,
       config: {
         systemInstruction: SYSTEM_PROMPT,
@@ -47,9 +76,10 @@ export const generateMeditationScript = async (theme: string, durationMinutes: n
                 properties: {
                   type: { type: Type.STRING },
                   content: { type: Type.STRING },
-                  pauseSeconds: { type: Type.NUMBER }
+                  pauseSeconds: { type: Type.NUMBER },
+                  ambientHint: { type: Type.STRING }
                 },
-                required: ["type", "content", "pauseSeconds"]
+                required: ["type", "content", "pauseSeconds", "ambientHint"]
               }
             }
           },
@@ -70,7 +100,7 @@ export const generateMeditationScript = async (theme: string, durationMinutes: n
   } catch (error: any) {
     if (retries > 0) {
       await wait(2000);
-      return generateMeditationScript(theme, retries - 1);
+      return generateMeditationScript(theme, durationMinutes, personalization, retries - 1);
     }
     throw error;
   }
