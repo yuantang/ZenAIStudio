@@ -168,8 +168,101 @@ function bufferToWav(buffer: AudioBuffer): Blob {
 }
 
 /**
+ * 生成极低音量的粉噪声作为 CORS 兜底 fallback
+ * 当无法加载任何背景音乐时，用微弱噪底代替死寂
+ */
+function generateAmbientFallback(ctx: OfflineAudioContext, duration: number): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+  
+  // 粉噪声生成（1/f 特性，比白噪声更自然）
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + white * 0.0555179;
+    b1 = 0.99332 * b1 + white * 0.0750759;
+    b2 = 0.96900 * b2 + white * 0.1538520;
+    b3 = 0.86650 * b3 + white * 0.3104856;
+    b4 = 0.55000 * b4 + white * 0.5329522;
+    b5 = -0.7616 * b5 - white * 0.0168980;
+    data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.003; // 极低音量
+    b6 = white * 0.115926;
+  }
+  return buffer;
+}
+
+/**
+ * 将短背景音频扩展为指定时长，在循环接缝处做 crossfade
+ */
+function loopWithCrossfade(
+  ctx: OfflineAudioContext,
+  source: AudioBuffer,
+  targetDuration: number,
+  crossfadeSec: number = 2.0
+): AudioBuffer {
+  const sampleRate = source.sampleRate;
+  const targetLength = Math.ceil(sampleRate * targetDuration);
+  const channels = source.numberOfChannels;
+  const result = ctx.createBuffer(channels, targetLength, sampleRate);
+  
+  const crossfadeSamples = Math.floor(sampleRate * crossfadeSec);
+  // 每次循环的有效长度（去掉 crossfade 重叠区域）
+  const effectiveLength = source.length - crossfadeSamples;
+  
+  if (effectiveLength <= 0) {
+    // 素材太短，无法做 crossfade，直接简单循环
+    for (let ch = 0; ch < channels; ch++) {
+      const srcData = source.getChannelData(ch);
+      const dstData = result.getChannelData(ch);
+      for (let i = 0; i < targetLength; i++) {
+        dstData[i] = srcData[i % source.length];
+      }
+    }
+    return result;
+  }
+
+  for (let ch = 0; ch < channels; ch++) {
+    const srcData = source.getChannelData(ch);
+    const dstData = result.getChannelData(ch);
+    let writePos = 0;
+    let isFirstLoop = true;
+
+    while (writePos < targetLength) {
+      if (isFirstLoop) {
+        // 第一次完整写入
+        const copyLen = Math.min(source.length, targetLength - writePos);
+        for (let i = 0; i < copyLen; i++) {
+          dstData[writePos + i] = srcData[i];
+        }
+        writePos += effectiveLength;
+        isFirstLoop = false;
+      } else {
+        // 后续循环：crossfade 区域 + 正常区域
+        for (let i = 0; i < crossfadeSamples && writePos + i < targetLength; i++) {
+          const fadeOut = 1 - (i / crossfadeSamples); // 上一轮尾部淡出
+          const fadeIn = i / crossfadeSamples;         // 新一轮头部淡入
+          const tailSample = srcData[effectiveLength + i] * fadeOut;
+          const headSample = srcData[i] * fadeIn;
+          dstData[writePos + i] = tailSample + headSample;
+        }
+        // crossfade 之后的正常部分
+        const normalStart = crossfadeSamples;
+        const normalLen = Math.min(effectiveLength - crossfadeSamples, targetLength - writePos - crossfadeSamples);
+        for (let i = 0; i < normalLen && writePos + crossfadeSamples + i < targetLength; i++) {
+          dstData[writePos + crossfadeSamples + i] = srcData[normalStart + i];
+        }
+        writePos += effectiveLength;
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * 单语音混音：接收单个连续的语音 Buffer，与背景音乐合成
- * 适用于整篇文本一次性 TTS 合成后的混音场景
+ * 特性：crossfade 循环背景音 + CORS 兜底 + 动态 ducking
  */
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
@@ -185,22 +278,33 @@ export async function mixSingleVoiceAudio(
   const totalDuration = voiceStartTime + voiceBuffer.duration + 10.0;
   const offlineCtx = new OfflineAudioContext(2, Math.ceil(sampleRate * totalDuration), sampleRate);
 
-  // 1. 加载背景音乐
+  // 1. 加载背景音乐（含 CORS 兜底）
   let bgBuffer: AudioBuffer | null = null;
   try {
     const resp = await fetch(bgMusicUrl, { mode: 'cors', credentials: 'omit' });
     if (!resp.ok) throw new Error(`HTTP Error ${resp.status}`);
     const ab = await resp.arrayBuffer();
-    bgBuffer = await offlineCtx.decodeAudioData(ab);
+    const rawBg = await offlineCtx.decodeAudioData(ab);
+    
+    // 如果背景音频比总时长短，用 crossfade 循环扩展
+    if (rawBg.duration < totalDuration) {
+      console.log(`[Mixing] 背景音乐 ${rawBg.duration.toFixed(1)}s < 总时长 ${totalDuration.toFixed(1)}s，执行 crossfade 循环`);
+      bgBuffer = loopWithCrossfade(offlineCtx, rawBg, totalDuration, 2.0);
+    } else {
+      bgBuffer = rawBg;
+    }
+    console.log("[Mixing] 背景音乐准备完成");
   } catch (e) {
-    console.warn("[Mixing] 背景音乐加载失败，使用纯净模式:", e);
+    console.warn("[Mixing] 背景音乐加载失败，启用本地环境音 fallback:", e);
+    // CORS 兜底：使用生成式粉噪声作为环境底噪
+    bgBuffer = generateAmbientFallback(offlineCtx, totalDuration);
   }
 
   // 2. 背景音乐轨道（含 ducking）
   if (bgBuffer) {
     const bgSource = offlineCtx.createBufferSource();
     bgSource.buffer = bgBuffer;
-    bgSource.loop = true;
+    // 不再用 loop=true，因为已经通过 crossfade 处理了完整时长
     const bgGainNode = offlineCtx.createGain();
 
     // 前奏渐入
@@ -248,3 +352,4 @@ export async function mixSingleVoiceAudio(
   const renderedBuffer = await offlineCtx.startRendering();
   return bufferToWav(renderedBuffer);
 }
+

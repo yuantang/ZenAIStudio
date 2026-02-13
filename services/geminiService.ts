@@ -120,7 +120,62 @@ export const synthesizeSpeech = async (text: string, voiceName: string, retries 
 };
 
 /**
- * 整篇冥想脚本一次性合成：将所有段落合并为连贯文本，单次 TTS 调用确保声纹一致
+ * 为段落添加过渡标记文本
+ */
+const addTransitionMarker = (text: string, pauseSeconds: number): string => {
+  if (pauseSeconds >= 15) {
+    return text + '\n\n……现在，请在这片宁静中，安静地与自己相处……\n\n';
+  } else if (pauseSeconds >= 8) {
+    return text + '\n\n……深深地吸气……缓缓地呼出……\n\n';
+  } else {
+    return text + '\n\n……\n\n';
+  }
+};
+
+/**
+ * 单次 TTS 调用（内部工具函数）
+ */
+const callTTS = async (
+  ai: GoogleGenAI,
+  text: string,
+  voiceName: string,
+  retries = 2
+): Promise<Uint8Array> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+      throw new Error("TTS 引擎未能返回音频数据。");
+    }
+    return decodeBase64(base64Audio);
+  } catch (error: any) {
+    if (retries > 0) {
+      await wait(2000);
+      return callTTS(ai, text, voiceName, retries - 1);
+    }
+    throw error;
+  }
+};
+
+// 分批阈值：超过此字数则自动分批合成
+const BATCH_CHAR_THRESHOLD = 1500;
+// 每批目标字数（留足余量）
+const BATCH_TARGET_SIZE = 1200;
+
+/**
+ * 整篇冥想脚本合成：短文本单次调用；长文本自动分批合成后拼接 PCM
  */
 export const synthesizeFullMeditation = async (
   script: MeditationScript, 
@@ -132,56 +187,66 @@ export const synthesizeFullMeditation = async (
     throw new Error("API_KEY 尚未配置。");
   }
 
-  // 将所有段落合并为一个连贯的文本，段落间嵌入自然停顿标记
-  const fullText = script.sections.map((section, idx) => {
-    let text = section.content;
-    // 在段落之间插入呼吸停顿标记，让 TTS 自然处理过渡
-    if (idx < script.sections.length - 1) {
-      const pauseDuration = section.pauseSeconds || 3;
-      if (pauseDuration >= 15) {
-        // 长停顿：深度静默意象
-        text += '\n\n……现在，请在这片宁静中，安静地与自己相处……\n\n';
-      } else if (pauseDuration >= 8) {
-        // 中等停顿：呼吸过渡
-        text += '\n\n……深深地吸气……缓缓地呼出……\n\n';
-      } else {
-        // 短停顿：自然衔接
-        text += '\n\n……\n\n';
-      }
-    }
-    return text;
-  }).join('');
-
   const ai = new GoogleGenAI({ apiKey });
   const targetVoice = voiceName || 'Zephyr';
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: fullText }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { 
-              voiceName: targetVoice 
-            }
-          }
-        }
-      }
-    });
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) {
-      throw new Error("TTS 引擎未能返回音频数据。");
+  // 构建带过渡标记的段落文本数组
+  const sectionTexts = script.sections.map((section, idx) => {
+    let text = section.content;
+    if (idx < script.sections.length - 1) {
+      text = addTransitionMarker(text, section.pauseSeconds || 3);
     }
+    return text;
+  });
 
-    return decodeBase64(base64Audio);
-  } catch (error: any) {
-    if (retries > 0) {
-      await wait(2000);
-      return synthesizeFullMeditation(script, voiceName, retries - 1);
-    }
-    throw error;
+  const fullText = sectionTexts.join('');
+
+  // 短文本：单次调用
+  if (fullText.length <= BATCH_CHAR_THRESHOLD) {
+    console.log(`[TTS] 单次合成模式 (${fullText.length} 字)`);
+    return callTTS(ai, fullText, targetVoice, retries);
   }
+
+  // 长文本：分批合成
+  console.log(`[TTS] 分批合成模式 (${fullText.length} 字，阈值 ${BATCH_CHAR_THRESHOLD})`);
+  const batches: string[] = [];
+  let currentBatch = '';
+
+  for (const sectionText of sectionTexts) {
+    if (currentBatch.length + sectionText.length > BATCH_TARGET_SIZE && currentBatch.length > 0) {
+      batches.push(currentBatch);
+      currentBatch = sectionText;
+    } else {
+      currentBatch += sectionText;
+    }
+  }
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  console.log(`[TTS] 分为 ${batches.length} 批次: [${batches.map(b => b.length + '字').join(', ')}]`);
+
+  // 顺序合成每批（保持声纹连贯性）
+  const audioChunks: Uint8Array[] = [];
+  for (let i = 0; i < batches.length; i++) {
+    console.log(`[TTS] 正在合成第 ${i + 1}/${batches.length} 批...`);
+    const chunk = await callTTS(ai, batches[i], targetVoice, retries);
+    audioChunks.push(chunk);
+    // 批次间短暂间隔，避免 API 速率限制
+    if (i < batches.length - 1) {
+      await wait(500);
+    }
+  }
+
+  // 拼接所有 PCM 数据
+  const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of audioChunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  console.log(`[TTS] 分批合成完成，总 PCM 大小: ${(totalLength / 1024).toFixed(1)} KB`);
+  return merged;
 };
