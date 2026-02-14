@@ -194,6 +194,89 @@ const callTTS = async (
 
 const BATCH_CHAR_THRESHOLD = 1500;
 const BATCH_TARGET_SIZE = 1200;
+// crossfade 时长（采样点数），24kHz 下 50ms = 1200 点
+const CROSSFADE_SAMPLES = 1200;
+
+/**
+ * 将 Int16LE PCM 字节流解码为 Float32 样本数组
+ */
+function pcmToFloat32(pcm: Uint8Array): Float32Array {
+  const byteLen = pcm.byteLength;
+  let alignedBuf = pcm.buffer;
+  let byteOff = pcm.byteOffset;
+  if (byteOff % 2 !== 0) {
+    const copy = new ArrayBuffer(byteLen);
+    new Uint8Array(copy).set(pcm);
+    alignedBuf = copy;
+    byteOff = 0;
+  }
+  const samplesCount = Math.floor(byteLen / 2);
+  const int16 = new Int16Array(alignedBuf, byteOff, samplesCount);
+  const float32 = new Float32Array(samplesCount);
+  for (let i = 0; i < samplesCount; i++) {
+    float32[i] = int16[i] / 32768.0;
+  }
+  return float32;
+}
+
+/**
+ * 将 Float32 样本数组编码回 Int16LE PCM 字节流
+ */
+function float32ToPcm(samples: Float32Array): Uint8Array {
+  const pcm = new Uint8Array(samples.length * 2);
+  const view = new DataView(pcm.buffer);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(i * 2, (s < 0 ? s * 0x8000 : s * 0x7FFF) | 0, true);
+  }
+  return pcm;
+}
+
+/**
+ * 将多段 Float32 音频样本通过 crossfade 无缝拼接
+ * 消除批次接缝处的 click/pop 噪声和音色跳变
+ */
+function crossfadeMerge(chunks: Float32Array[], fadeSamples: number): Float32Array {
+  if (chunks.length === 0) return new Float32Array(0);
+  if (chunks.length === 1) return chunks[0];
+
+  // 计算合并后总长度（每个接缝重叠 fadeSamples 个采样点）
+  let totalLen = chunks[0].length;
+  for (let i = 1; i < chunks.length; i++) {
+    totalLen += chunks[i].length - fadeSamples;
+  }
+  totalLen = Math.max(totalLen, 0);
+
+  const merged = new Float32Array(totalLen);
+  let writePos = 0;
+
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    if (c === 0) {
+      // 第一段：直接写入
+      merged.set(chunk, 0);
+      writePos = chunk.length - fadeSamples;
+    } else {
+      // 后续段：在重叠区做 crossfade
+      const overlapStart = writePos;
+      const actualFade = Math.min(fadeSamples, chunk.length, merged.length - overlapStart);
+      
+      for (let i = 0; i < actualFade; i++) {
+        const fadeOut = 1 - (i / actualFade); // 前一段淡出
+        const fadeIn = i / actualFade;         // 当前段淡入
+        merged[overlapStart + i] = merged[overlapStart + i] * fadeOut + chunk[i] * fadeIn;
+      }
+      // 重叠区之后的部分直接写入
+      const remaining = chunk.length - actualFade;
+      if (remaining > 0) {
+        merged.set(chunk.subarray(actualFade), overlapStart + actualFade);
+      }
+      writePos = overlapStart + chunk.length - fadeSamples;
+    }
+  }
+
+  return merged;
+}
 
 export const synthesizeFullMeditation = async (
   script: MeditationScript, 
@@ -216,10 +299,14 @@ export const synthesizeFullMeditation = async (
 
   const fullText = sectionTexts.join('');
 
+  // 短文本：单次合成
   if (fullText.length <= BATCH_CHAR_THRESHOLD) {
+    console.log(`[TTS] 单次合成 (${fullText.length} 字)`);
     return callTTS(ai, fullText, targetVoice, retries);
   }
 
+  // 长文本：分批合成 + crossfade 拼接
+  console.log(`[TTS] 分批合成 (${fullText.length} 字)`);
   const batches: string[] = [];
   let currentBatch = '';
   for (const sectionText of sectionTexts) {
@@ -231,20 +318,23 @@ export const synthesizeFullMeditation = async (
     }
   }
   if (currentBatch.length > 0) batches.push(currentBatch);
+  console.log(`[TTS] ${batches.length} 批: [${batches.map(b => b.length + '字').join(', ')}]`);
 
-  const audioChunks: Uint8Array[] = [];
+  // 顺序合成每批并解码为 Float32
+  const floatChunks: Float32Array[] = [];
   for (let i = 0; i < batches.length; i++) {
-    const chunk = await callTTS(ai, batches[i], targetVoice, retries);
-    audioChunks.push(chunk);
+    console.log(`[TTS] 合成 ${i + 1}/${batches.length}...`);
+    const pcm = await callTTS(ai, batches[i], targetVoice, retries);
+    floatChunks.push(pcmToFloat32(pcm));
     if (i < batches.length - 1) await wait(500);
   }
 
-  const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of audioChunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
+  // Crossfade 无缝拼接（消除接缝爆音）
+  console.log(`[TTS] crossfade 拼接 (fade=${CROSSFADE_SAMPLES} samples)...`);
+  const merged = crossfadeMerge(floatChunks, CROSSFADE_SAMPLES);
+
+  // 编码回 Int16 PCM
+  const result = float32ToPcm(merged);
+  console.log(`[TTS] 完成，总 PCM: ${(result.byteLength / 1024).toFixed(1)} KB`);
+  return result;
 };

@@ -267,8 +267,10 @@ function loopWithCrossfade(
  */
 
 /**
- * 生成混响脉冲响应（IR）— 模拟温暖的冥想教室空间
- * 使用指数衰减的随机噪声，不需要任何外部文件
+ * 生成混响脉冲响应（IR）— 三层结构的冥想教室空间
+ * Layer 1: Pre-delay (15-25ms 静默)
+ * Layer 2: Early reflections (6 个离散延迟线，模拟墙壁反射)
+ * Layer 3: Diffuse tail (指数衰减噪声 + 高频阻尼)
  */
 function generateReverbIR(
   ctx: OfflineAudioContext,
@@ -279,14 +281,53 @@ function generateReverbIR(
   const length = Math.ceil(sampleRate * duration);
   const buffer = ctx.createBuffer(2, length, sampleRate);
   
+  // Pre-delay: 20ms 的静默（模拟直达声到第一次反射的距离）
+  const preDelaySamples = Math.ceil(sampleRate * 0.020);
+
+  // Early reflections: 6 个离散反射点（模拟小房间的墙壁/天花板）
+  const earlyReflections = [
+    { delay: 0.023, gain: 0.72 },  // 左墙
+    { delay: 0.031, gain: 0.58 },  // 右墙
+    { delay: 0.041, gain: 0.45 },  // 天花板
+    { delay: 0.053, gain: 0.38 },  // 后墙
+    { delay: 0.067, gain: 0.28 },  // 角落反射
+    { delay: 0.079, gain: 0.20 },  // 二次反射
+  ];
+
+  // Late reverb 起始点 (约 80ms 后)
+  const lateStart = Math.ceil(sampleRate * 0.080);
+
   for (let ch = 0; ch < 2; ch++) {
     const data = buffer.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      const t = i / sampleRate;
-      // 指数衰减 × 随机噪声 = 自然混响尾巴
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-t * decay);
+
+    // Layer 2: 写入早期反射（左右声道略有差异以增加空间感）
+    for (const ref of earlyReflections) {
+      const delaySamples = Math.ceil(sampleRate * (ref.delay + (ch === 1 ? 0.003 : 0)));
+      if (delaySamples < length) {
+        // 短脉冲 + 微量随机性
+        const impulseLen = Math.min(Math.ceil(sampleRate * 0.002), length - delaySamples);
+        for (let i = 0; i < impulseLen; i++) {
+          data[delaySamples + i] += ref.gain * (1 - i / impulseLen) * (0.9 + Math.random() * 0.2);
+        }
+      }
+    }
+
+    // Layer 3: 扩散尾巴（从 lateStart 开始，指数衰减 + 高频阻尼）
+    let lpState = 0; // 低通滤波器状态（模拟空气吸收高频）
+    const lpCoeff = 0.7; // 截止约 4kHz，越低声音越温暖
+    for (let i = lateStart; i < length; i++) {
+      const t = (i - lateStart) / sampleRate;
+      const white = Math.random() * 2 - 1;
+      // 高频阻尼低通滤波
+      lpState = lpState * lpCoeff + white * (1 - lpCoeff);
+      // 指数衰减包络
+      const envelope = Math.exp(-t * decay);
+      // 微妙的调制（增加有机感）
+      const modulation = 1 + 0.05 * Math.sin(2 * Math.PI * 0.5 * t);
+      data[i] += lpState * envelope * modulation * 0.3;
     }
   }
+
   return buffer;
 }
 
@@ -553,7 +594,7 @@ function getDominantAmbientHint(sections?: { ambientHint?: string }[]): string {
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
   bgMusicUrl: string,
-  scriptSections?: { ambientHint?: string; pauseSeconds?: number }[]
+  scriptSections?: { type?: string; ambientHint?: string; pauseSeconds?: number }[]
 ): Promise<Blob> {
   const sampleRate = 44100;
   const BGM_BASE_GAIN = 0.18;
@@ -717,7 +758,7 @@ export async function mixSingleVoiceAudio(
     const totalChars = scriptSections.reduce((s, sec) => s + ((sec as any).content?.length || 100), 0);
     let currentPos = voiceStartTime;
     
-    const sectionTimings: { start: number; end: number; hint: string }[] = [];
+    const sectionTimings: { start: number; end: number; hint: string; type: string }[] = [];
     
     scriptSections.forEach((sec, i) => {
       const charLen = (sec as any).content?.length || 100;
@@ -729,6 +770,7 @@ export async function mixSingleVoiceAudio(
         start: currentPos,
         end: Math.min(sectionEnd, voiceEndTime + outroGap),
         hint: sec.ambientHint || 'forest',
+        type: sec.type || 'visualization',
       });
       currentPos = sectionEnd;
     });
@@ -765,7 +807,6 @@ export async function mixSingleVoiceAudio(
     // ────────────────────────────────────────────
     for (let i = 1; i < sectionTimings.length; i++) {
       const transitionTime = sectionTimings[i].start;
-      // 跳过 silence 段和最后一段的过渡铃
       const prevHint = sectionTimings[i - 1].hint;
       if (prevHint === 'silence') continue;
       
@@ -777,6 +818,26 @@ export async function mixSingleVoiceAudio(
       bellSrc.connect(bellGain).connect(masterLimiter);
       bellSrc.start(Math.max(0, transitionTime - 0.5));
     }
+
+    // ────────────────────────────────────────────
+    // 5.6 呼吸引导同步音效（在 breathing 段落生成柔和 swell tone）
+    // ────────────────────────────────────────────
+    sectionTimings.forEach((timing) => {
+      if (timing.type === 'breathing') {
+        console.log(`[Mixing] 呼吸引导音效: ${timing.start.toFixed(1)}-${timing.end.toFixed(1)}s`);
+        const dur = timing.end - timing.start;
+        if (dur > 2) {
+          const breathBuffer = generateBreathingGuide(offlineCtx, dur);
+          const breathSrc = offlineCtx.createBufferSource();
+          breathSrc.buffer = breathBuffer;
+          const breathGain = offlineCtx.createGain();
+          breathGain.gain.value = 0.6;
+          breathSrc.connect(breathGain).connect(masterLimiter);
+          breathSrc.start(timing.start);
+        }
+      }
+    });
+
   } else {
     // 降级：无段落信息时使用单一声境
     const dominantHint = getDominantAmbientHint(scriptSections);
@@ -794,12 +855,193 @@ export async function mixSingleVoiceAudio(
   }
 
   // ────────────────────────────────────────────
-  // 6. 离线渲染
+  // 6. 离线渲染 + LUFS 标准化
   // ────────────────────────────────────────────
   console.log(`[Mixing] 开始离线渲染 (${totalDuration.toFixed(1)}s)...`);
   const renderedBuffer = await offlineCtx.startRendering();
-  console.log("[Mixing] 渲染完成！");
-  return bufferToWav(renderedBuffer);
+  console.log("[Mixing] 渲染完成，执行 LUFS 标准化...");
+  
+  // 应用 LUFS 响度标准化（目标 -16 LUFS）
+  normalizeLUFS(renderedBuffer, -16);
+  
+  // 优先尝试压缩格式（Opus/WebM），失败则回退到 WAV
+  console.log("[Mixing] 编码输出...");
+  const blob = await encodeAudio(renderedBuffer);
+  console.log(`[Mixing] 完成！格式: ${blob.type}, 大小: ${(blob.size / 1024 / 1024).toFixed(1)} MB`);
+  return blob;
 }
 
+// ============================================================
+//  新增：呼吸引导同步音效生成器
+// ============================================================
 
+/**
+ * 生成呼吸引导音效：柔和的正弦波 swell
+ * 节奏：吸气 4s (升调) → 屏息 2s → 呼气 6s (降调)，循环至指定时长
+ */
+function generateBreathingGuide(
+  ctx: OfflineAudioContext,
+  duration: number,
+  baseFreq: number = 160
+): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.ceil(sampleRate * duration);
+  const buffer = ctx.createBuffer(2, length, sampleRate);
+
+  // 呼吸周期参数
+  const inhale = 4.0;   // 吸气 4 秒
+  const hold = 2.0;     // 屏息 2 秒
+  const exhale = 6.0;   // 呼气 6 秒
+  const cycle = inhale + hold + exhale;
+
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const t = i / sampleRate;
+      const phase = t % cycle;
+      let envelope = 0;
+      let freqMod = 1.0;
+
+      if (phase < inhale) {
+        // 吸气阶段：音量升高，频率微升
+        const p = phase / inhale;
+        envelope = p * p; // 二次曲线（缓慢启动→快速上升）
+        freqMod = 1.0 + 0.08 * p; // 频率微升 8%
+      } else if (phase < inhale + hold) {
+        // 屏息阶段：音量保持峰值
+        envelope = 1.0;
+        freqMod = 1.08;
+      } else {
+        // 呼气阶段：音量缓慢下降，频率微降
+        const p = (phase - inhale - hold) / exhale;
+        envelope = (1 - p) * (1 - p); // 二次曲线（快速启动→缓慢收尾）
+        freqMod = 1.08 - 0.08 * p;
+      }
+
+      // 柔和的正弦波 + 泛音
+      const freq = baseFreq * freqMod;
+      const sample =
+        0.6 * Math.sin(2 * Math.PI * freq * t) +
+        0.3 * Math.sin(2 * Math.PI * freq * 2 * t) * 0.5 +
+        0.1 * Math.sin(2 * Math.PI * freq * 3 * t) * 0.25;
+
+      // 整体轻柔渐入渐出
+      const globalFade = Math.min(t / 2.0, (duration - t) / 2.0, 1.0);
+      data[i] = sample * envelope * globalFade * 0.025; // 极低音量，潜意识引导
+    }
+  }
+  return buffer;
+}
+
+// ============================================================
+//  新增：LUFS 响度标准化
+// ============================================================
+
+/**
+ * 简化的 LUFS 测量与标准化
+ * 1. 测量 RMS 响度（近似 integrated LUFS）
+ * 2. 计算到目标 LUFS 的增益差
+ * 3. 应用增益（原地修改 AudioBuffer）
+ */
+function normalizeLUFS(buffer: AudioBuffer, targetLUFS: number = -16): void {
+  const channels = buffer.numberOfChannels;
+  const length = buffer.length;
+  
+  // 1. 测量所有声道的 RMS 能量
+  let sumSquared = 0;
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      sumSquared += data[i] * data[i];
+    }
+  }
+  const rms = Math.sqrt(sumSquared / (length * channels));
+  
+  // 2. RMS → 近似 LUFS（简化公式，实际 LUFS 需要 K-weighting 滤波器）
+  const currentLUFS = rms > 0 ? 20 * Math.log10(rms) - 0.691 : -100;
+  
+  // 3. 计算增益差
+  const gainDB = targetLUFS - currentLUFS;
+  // 限制最大调整幅度（防止极端情况）
+  const clampedGainDB = Math.max(-12, Math.min(12, gainDB));
+  const gainLinear = Math.pow(10, clampedGainDB / 20);
+  
+  console.log(`[LUFS] 当前: ${currentLUFS.toFixed(1)} LUFS → 目标: ${targetLUFS} LUFS, 增益: ${clampedGainDB.toFixed(1)} dB`);
+  
+  // 4. 应用增益
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      data[i] *= gainLinear;
+      // 硬限幅保护
+      if (data[i] > 1.0) data[i] = 1.0;
+      if (data[i] < -1.0) data[i] = -1.0;
+    }
+  }
+}
+
+// ============================================================
+//  新增：输出格式编码器（优先 Opus → 兜底 WAV）
+// ============================================================
+
+/**
+ * 优先尝试浏览器原生 Opus/WebM 编码（体积减少 90%+）
+ * 不支持时回退到 WAV
+ */
+async function encodeAudio(buffer: AudioBuffer): Promise<Blob> {
+  // 检测浏览器是否支持 MediaRecorder + Opus
+  const opusMime = 'audio/webm;codecs=opus';
+  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(opusMime)) {
+    try {
+      console.log("[Encode] 使用 Opus/WebM 编码...");
+      return await encodeWithMediaRecorder(buffer, opusMime);
+    } catch (e) {
+      console.warn("[Encode] Opus 编码失败，回退 WAV:", e);
+    }
+  }
+  
+  // 回退到 WAV
+  console.log("[Encode] 使用 WAV 编码");
+  return bufferToWav(buffer);
+}
+
+/**
+ * 通过 MediaRecorder API 将 AudioBuffer 编码为压缩格式
+ */
+function encodeWithMediaRecorder(buffer: AudioBuffer, mimeType: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const dest = audioCtx.createMediaStreamDestination();
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(dest);
+
+    const recorder = new MediaRecorder(dest.stream, { 
+      mimeType,
+      audioBitsPerSecond: 128000 // 128kbps — 高质量
+    });
+    
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    
+    recorder.onstop = () => {
+      audioCtx.close();
+      resolve(new Blob(chunks, { type: mimeType }));
+    };
+    
+    recorder.onerror = (e) => {
+      audioCtx.close();
+      reject(e);
+    };
+
+    recorder.start();
+    source.start(0);
+    
+    // 在音频播放完毕后停止录制
+    source.onended = () => {
+      setTimeout(() => recorder.stop(), 200); // 200ms 缓冲确保完整捕获
+    };
+  });
+}
