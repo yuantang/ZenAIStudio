@@ -1,4 +1,43 @@
 
+/**
+ * Lanczos-3 内核：sinc(x) * sinc(x/a)，窗口大小 a=3
+ * 比线性插值质量高很多，接近专业重采样器
+ */
+function lanczos3(x: number): number {
+  if (x === 0) return 1;
+  if (Math.abs(x) >= 3) return 0;
+  const px = Math.PI * x;
+  return (Math.sin(px) / px) * (Math.sin(px / 3) / (px / 3));
+}
+
+/**
+ * 高质量重采样：使用 Lanczos-3 插值将音频从 srcRate 转换到 dstRate
+ */
+function resampleLanczos(srcData: Float32Array, srcRate: number, dstRate: number): Float32Array {
+  if (srcRate === dstRate) return srcData;
+  
+  const ratio = srcRate / dstRate;
+  const dstLength = Math.ceil(srcData.length / ratio);
+  const result = new Float32Array(dstLength);
+  const a = 3; // Lanczos 核窗口
+  
+  for (let i = 0; i < dstLength; i++) {
+    const srcPos = i * ratio;
+    const srcIndex = Math.floor(srcPos);
+    let sample = 0;
+    
+    for (let j = srcIndex - a + 1; j <= srcIndex + a; j++) {
+      if (j >= 0 && j < srcData.length) {
+        sample += srcData[j] * lanczos3(srcPos - j);
+      }
+    }
+    
+    result[i] = sample;
+  }
+  
+  return result;
+}
+
 export async function decodePcm(
   data: Uint8Array,
   ctx: AudioContext | OfflineAudioContext,
@@ -19,12 +58,26 @@ export async function decodePcm(
 
   const samplesCount = Math.floor(byteLength / 2);
   const dataInt16 = new Int16Array(alignedBuffer, finalByteOffset, samplesCount);
-  const buffer = ctx.createBuffer(1, samplesCount, sampleRate);
-  const channelData = buffer.getChannelData(0);
-
+  
+  // 先解码到 Float32
+  const rawSamples = new Float32Array(samplesCount);
   for (let i = 0; i < samplesCount; i++) {
-    channelData[i] = dataInt16[i] / 32768.0;
+    rawSamples[i] = dataInt16[i] / 32768.0;
   }
+
+  // 如果上下文采样率与源不同，执行 Lanczos-3 高质量重采样
+  const targetRate = ctx.sampleRate;
+  let finalSamples: Float32Array;
+  
+  if (Math.abs(targetRate - sampleRate) > 1) {
+    console.log(`[PCM] Lanczos-3 重采样: ${sampleRate}Hz → ${targetRate}Hz`);
+    finalSamples = resampleLanczos(rawSamples, sampleRate, targetRate);
+  } else {
+    finalSamples = rawSamples;
+  }
+  
+  const buffer = ctx.createBuffer(1, finalSamples.length, targetRate);
+  buffer.getChannelData(0).set(finalSamples);
   return buffer;
 }
 
@@ -447,8 +500,61 @@ function addBinauralBeats(
 }
 
 /**
- * 生成自然声境纹理（纯前端合成）
- * 根据 ambientHint 生成匹配的环境音层
+ * 等时节拍（Isochronal Tones）— 无需耳机也能生效的脑波引导
+ * 原理：单一频率的节律性 AM 调制，通过亮度脉冲让大脑同步
+ * 与双耳节拍形成互补：耳机用户双重引导，扬声器用户也能受益
+ */
+function addIsochronalTones(
+  ctx: OfflineAudioContext,
+  startTime: number,
+  duration: number,
+  baseFreq: number = 400,    // 载波频率（比双耳节拍高，更易感知）
+  pulseRate: number = 8      // 脉冲频率 = 目标脑波频率
+): void {
+  const gainValue = 0.015; // 极低音量
+
+  const osc = ctx.createOscillator();
+  osc.frequency.value = baseFreq;
+  osc.type = 'sine';
+
+  // AM 调制：用低频方波调制载波的音量
+  const modGain = ctx.createGain();
+  // 使用 setValueCurveAtTime 模拟脉冲 —— 更简洁的方式是用多段线性
+  // 这里用简易方法：通过 LFO 方波实现节律性 on/off
+  const lfoOsc = ctx.createOscillator();
+  lfoOsc.frequency.value = pulseRate;
+  lfoOsc.type = 'square'; // 方波 → 节律性开关
+
+  // 将 LFO 映射到 0~1 范围（方波输出 -1~1，需要偏移到 0~1）
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 0.5; // 将 -1~1 缩放到 -0.5~0.5
+  const lfoOffset = ctx.createGain();
+  lfoOffset.gain.value = gainValue;
+
+  // 淡入淡出
+  const envGain = ctx.createGain();
+  envGain.gain.setValueAtTime(0, startTime);
+  envGain.gain.linearRampToValueAtTime(1, startTime + 4);
+  envGain.gain.setValueAtTime(1, startTime + duration - 4);
+  envGain.gain.linearRampToValueAtTime(0, startTime + duration);
+
+  // 用 GainNode 做 AM 调制：osc → modGain (由 LFO 控制) → envGain → destination
+  // 简化实现：直接用 gain 调参实现脉冲效果
+  osc.connect(modGain).connect(envGain).connect(ctx.destination);
+  
+  // LFO 控制 modGain 的 gain 参数
+  lfoOsc.connect(lfoGain);
+  lfoGain.connect(modGain.gain);
+  modGain.gain.value = 0.5; // 中心偏移值
+
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+  lfoOsc.start(startTime);
+  lfoOsc.stop(startTime + duration);
+}
+/**
+ * 生成自然声境纹理（有机演变版 v2）
+ * v2 升级：泊松分布鸟鸣 / 互质周期海浪 / 阵性雨强 / 立体声空间自动化
  */
 function generateAmbientTexture(
   ctx: OfflineAudioContext,
@@ -459,73 +565,160 @@ function generateAmbientTexture(
   const length = Math.ceil(sampleRate * duration);
   const buffer = ctx.createBuffer(2, length, sampleRate);
 
+  // 简易伪随机种子（让同一 hint 的不同段落也有变化）
+  let seed = duration * 1000;
+  const seededRandom = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+
   switch (hint) {
     case 'rain': {
-      // 雨声：密集的随机脉冲 + 低通滤波效果
+      // ── 有机雨声 v2 ──
+      // 阵性强度调制（40s 为一个大呼吸周期）+ 随机大雨滴脉冲
       for (let ch = 0; ch < 2; ch++) {
         const data = buffer.getChannelData(ch);
         let prev = 0;
+        const burstPeriod = 40 + ch * 7; // 左右声道不同周期，避免同步
         for (let i = 0; i < length; i++) {
-          // 随机雨滴脉冲
-          const dropProbability = 0.002;
-          const drop = Math.random() < dropProbability ? (Math.random() * 0.3) : 0;
-          // 低通滤波模拟雨声"沙沙"质感
-          prev = prev * 0.97 + (Math.random() * 2 - 1 + drop) * 0.03;
-          data[i] = prev * 0.04;
+          const t = i / sampleRate;
+          // 阵性雨势：缓慢起伏的强度包络
+          const intensity = 0.5 + 0.5 * Math.sin(2 * Math.PI * t / burstPeriod);
+          // 基础雨声密度随强度变化
+          const dropProb = 0.001 + 0.004 * intensity;
+          const drop = Math.random() < dropProb ? (Math.random() * 0.4 * intensity) : 0;
+          // 低通滤波 + 动态截止频率
+          const lpCoeff = 0.96 + 0.02 * intensity; // 强雨时更亮
+          prev = prev * lpCoeff + (Math.random() * 2 - 1 + drop) * (1 - lpCoeff);
+          // 立体声空间随机化
+          const panJitter = 1 + (ch === 0 ? 0.1 : -0.1) * Math.sin(t * 0.3);
+          data[i] = prev * 0.04 * panJitter;
         }
       }
       break;
     }
     case 'ocean': {
-      // 海浪：低频正弦调制 + 噪声 = 起伏的浪涛
+      // ── 有机海浪 v2 ──
+      // 3 个互质周期叠加 → 永不重复的浪涛节奏
+      const wavePeriods = [7.3, 11.7, 19.1]; // 互质秒数
       for (let ch = 0; ch < 2; ch++) {
         const data = buffer.getChannelData(ch);
-        const waveFreq = 0.08 + ch * 0.01; // 左右微差，增加空间感
+        const phaseOffset = ch * 0.4; // 左右声道相位偏移
         for (let i = 0; i < length; i++) {
           const t = i / sampleRate;
-          // 慢速波浪包络
-          const wave = (Math.sin(2 * Math.PI * waveFreq * t) + 1) * 0.5;
+          // 叠加三层不同周期的浪涛
+          let waveEnv = 0;
+          for (let w = 0; w < wavePeriods.length; w++) {
+            const period = wavePeriods[w];
+            const phase = (t + phaseOffset + w * 2.3) / period;
+            // 不对称波形：上升快（浪涌），下降慢（回退）
+            const saw = phase % 1;
+            const asymmetric = saw < 0.3 
+              ? Math.pow(saw / 0.3, 0.7)     // 快速涌起
+              : Math.pow(1 - (saw - 0.3) / 0.7, 1.5); // 缓慢回退
+            waveEnv += asymmetric * (1 / (w + 1)); // 长周期权重更低
+          }
+          waveEnv = Math.min(1, waveEnv / 1.5); // 归一化
+
+          // 噪声纹理（浪涛声）
           const noise = Math.random() * 2 - 1;
-          data[i] = noise * wave * 0.035;
+          // 高浪时高频更多（浪花飞溅）
+          const brightness = 0.7 + 0.3 * waveEnv;
+          data[i] = noise * waveEnv * brightness * 0.035;
         }
       }
       break;
     }
     case 'forest': {
-      // 森林：微风 + 偶尔的鸟鸣模拟（高频短脉冲）
+      // ── 有机森林 v2 ──
+      // 泊松随机鸟鸣 + 频率滑动 + 立体声随机定位
+
+      // 预生成泊松分布的鸟鸣事件
+      const birdEvents: { time: number; freq: number; pan: number; type: number }[] = [];
+      let birdTime = 2 + seededRandom() * 5; // 首次鸟鸣在 2-7s
+      while (birdTime < duration - 2) {
+        birdEvents.push({
+          time: birdTime,
+          freq: 1800 + seededRandom() * 1200,     // 1.8-3kHz 随机基频
+          pan: (seededRandom() - 0.5) * 1.2,       // 立体声位置 -0.6 ~ +0.6
+          type: Math.floor(seededRandom() * 3),     // 0=啁啾 1=啼鸣 2=颤音
+        });
+        // 泊松间隔：平均 8s，指数分布，最短 3s
+        birdTime += 3 + (-Math.log(1 - seededRandom())) * 8;
+      }
+
       for (let ch = 0; ch < 2; ch++) {
         const data = buffer.getChannelData(ch);
-        let prev = 0;
+        let windState = 0;
         for (let i = 0; i < length; i++) {
           const t = i / sampleRate;
-          // 微风底噪
-          prev = prev * 0.995 + (Math.random() * 2 - 1) * 0.005;
-          let sample = prev * 0.03;
-          // 偶尔的鸟鸣碎音（每隔 8-15秒）
-          const birdCycle = 12 + ch * 3;
-          const birdPhase = (t % birdCycle) / birdCycle;
-          if (birdPhase > 0.95 && birdPhase < 0.98) {
-            const birdT = (birdPhase - 0.95) / 0.03;
-            sample += Math.sin(2 * Math.PI * (2000 + 500 * Math.sin(birdT * 20)) * t) 
-                      * Math.exp(-birdT * 5) * 0.01;
+
+          // 微风底噪（缓慢起伏）
+          const gustEnv = 0.7 + 0.3 * Math.sin(2 * Math.PI * t / 23) * Math.sin(2 * Math.PI * t / 37);
+          windState = windState * 0.995 + (Math.random() * 2 - 1) * 0.005;
+          let sample = windState * 0.03 * gustEnv;
+
+          // 渲染鸟鸣事件
+          for (const bird of birdEvents) {
+            const dt = t - bird.time;
+            if (dt < 0 || dt > 1.5) continue; // 每只鸟鸣持续 ~1.5s
+
+            // 立体声定位增益
+            const chGain = ch === 0 
+              ? Math.max(0, 1 - bird.pan) 
+              : Math.max(0, 1 + bird.pan);
+
+            let birdSample = 0;
+            const env = Math.exp(-dt * 4) * (1 - Math.exp(-dt * 30)); // 快速起始 + 衰减
+
+            if (bird.type === 0) {
+              // 啁啾：快速频率下滑
+              const chirpFreq = bird.freq * (1 + 0.3 * Math.exp(-dt * 8));
+              birdSample = Math.sin(2 * Math.PI * chirpFreq * dt) * env;
+            } else if (bird.type === 1) {
+              // 啼鸣：两个短音符
+              const note1 = dt < 0.3 ? Math.sin(2 * Math.PI * bird.freq * dt) : 0;
+              const note2 = dt > 0.5 && dt < 0.8 
+                ? Math.sin(2 * Math.PI * bird.freq * 1.2 * (dt - 0.5)) : 0;
+              birdSample = (note1 + note2) * env;
+            } else {
+              // 颤音：快速振幅调制
+              const trill = Math.sin(2 * Math.PI * 25 * dt); // 25Hz 颤动
+              birdSample = Math.sin(2 * Math.PI * bird.freq * dt) * trill * env;
+            }
+
+            sample += birdSample * chGain * 0.012;
           }
+
           data[i] = sample;
         }
       }
       break;
     }
     case 'fire': {
-      // 壁炉：低频噼啪 + 温暖噪底
+      // ── 有机壁炉 v2 ──
+      // 低频温暖呼吸 + 泊松噼啪 + 偶尔的木柴断裂
       for (let ch = 0; ch < 2; ch++) {
         const data = buffer.getChannelData(ch);
         let prev = 0;
         for (let i = 0; i < length; i++) {
+          const t = i / sampleRate;
+          // 温暖呼吸感（火焰亮暗周期）
+          const breathe = 0.7 + 0.3 * Math.sin(2 * Math.PI * t / 8) * Math.sin(2 * Math.PI * t / 13);
           // 温暖噪底
           prev = prev * 0.98 + (Math.random() * 2 - 1) * 0.02;
-          let sample = prev * 0.025;
-          // 偶尔的噼啪声
-          if (Math.random() < 0.0003) {
-            sample += (Math.random() * 2 - 1) * 0.08;
+          let sample = prev * 0.025 * breathe;
+          // 噼啪声（泊松分布，平均每秒 0.3 次）
+          if (Math.random() < 0.3 / sampleRate * 100) {
+            const crackle = (Math.random() * 2 - 1) * 0.08 * (0.5 + 0.5 * seededRandom());
+            sample += crackle * (ch === 0 ? 0.7 + seededRandom() * 0.3 : 0.7 + seededRandom() * 0.3);
+          }
+          // 偶尔的木柴断裂（低频 thud）
+          if (Math.random() < 0.02 / sampleRate) {
+            for (let j = 0; j < Math.min(1000, length - i); j++) {
+              data[Math.min(i + j, length - 1)] += 
+                Math.sin(2 * Math.PI * 80 * j / sampleRate) * Math.exp(-j / sampleRate * 10) * 0.02;
+            }
           }
           data[i] = sample;
         }
@@ -533,16 +726,28 @@ function generateAmbientTexture(
       break;
     }
     case 'space': {
-      // 宇宙：极缓慢的正弦波叠加，深邃辽远
+      // ── 有机宇宙 v2 ──
+      // 深空 drone + 缓慢演变的共振 + 偶尔的遥远脉冲
       for (let ch = 0; ch < 2; ch++) {
         const data = buffer.getChannelData(ch);
         for (let i = 0; i < length; i++) {
           const t = i / sampleRate;
-          const sample = 
-            Math.sin(2 * Math.PI * 60 * t) * 0.008 +
-            Math.sin(2 * Math.PI * 90 * t + ch) * 0.006 +
-            Math.sin(2 * Math.PI * 0.05 * t) * Math.sin(2 * Math.PI * 120 * t) * 0.004;
-          data[i] = sample;
+          // 缓慢演变的 drone（频率微漂移）
+          const drift = Math.sin(2 * Math.PI * 0.02 * t) * 5; // ±5Hz 漂移
+          const drone1 = Math.sin(2 * Math.PI * (60 + drift) * t) * 0.008;
+          const drone2 = Math.sin(2 * Math.PI * (90 + drift * 0.7 + ch * 2) * t) * 0.006;
+          // AM 调制产生"呼吸"的宇宙脉动
+          const pulse = (1 + Math.sin(2 * Math.PI * 0.03 * t)) * 0.5;
+          const drone3 = Math.sin(2 * Math.PI * (120 + drift * 0.5) * t) * 0.004 * pulse;
+          // 偶尔的深空脉冲（像遥远的恒星闪烁）
+          let sparkle = 0;
+          const sparkleCycle = 17 + ch * 7;
+          const sparklePhase = (t % sparkleCycle) / sparkleCycle;
+          if (sparklePhase > 0.96 && sparklePhase < 0.99) {
+            const sp = (sparklePhase - 0.96) / 0.03;
+            sparkle = Math.sin(2 * Math.PI * 3000 * t) * Math.exp(-sp * 15) * 0.003;
+          }
+          data[i] = drone1 + drone2 + drone3 + sparkle;
         }
       }
       break;
@@ -691,23 +896,12 @@ export async function mixSingleVoiceAudio(
   outroSrc.start(voiceEndTime + outroGap);
 
   // ────────────────────────────────────────────
-  // 3. 语音轨道 + 混响 + 暖色 EQ
+  // 3. 语音轨道 + Haas 展宽 + 混响 + 暖色 EQ
   // ────────────────────────────────────────────
-  console.log("[Mixing] 应用语音混响 + 暖色 EQ...");
+  console.log("[Mixing] 应用语音 Haas 展宽 + 混响 + 暖色 EQ...");
 
   const vSource = offlineCtx.createBufferSource();
   vSource.buffer = voiceBuffer;
-
-  // 干声通路
-  const dryGain = offlineCtx.createGain();
-  dryGain.gain.value = VOICE_GAIN * (1 - REVERB_MIX);
-
-  // 湿声（混响）通路
-  const wetGain = offlineCtx.createGain();
-  wetGain.gain.value = VOICE_GAIN * REVERB_MIX;
-  const reverbIR = generateReverbIR(offlineCtx, 2.5, 2.0);
-  const convolver = offlineCtx.createConvolver();
-  convolver.buffer = reverbIR;
 
   // 暖色 EQ：低频增益 + 高频滚降
   const warmEQ = offlineCtx.createBiquadFilter();
@@ -727,26 +921,57 @@ export async function mixSingleVoiceAudio(
   voiceEnvelope.gain.setValueAtTime(1, voiceEndTime - 1.5);
   voiceEnvelope.gain.linearRampToValueAtTime(0, voiceEndTime);
 
-  // 信号链: source → EQ → envelope → (dry + wet/reverb) → limiter
+  // ── Haas Effect 立体声展宽 ──
+  // 原理：左声道正常，右声道延迟 0.6ms → 产生空间感（像在 1-2m 外说话）
+  const haasDelay = offlineCtx.createDelay(0.01);
+  haasDelay.delayTime.value = 0.0006; // 0.6ms ≈ 左右耳距离差
+
+  // 左声道（正常）
+  const panL = offlineCtx.createStereoPanner();
+  panL.pan.value = -0.15; // 微偏左
+  const gainL = offlineCtx.createGain();
+  gainL.gain.value = VOICE_GAIN * (1 - REVERB_MIX);
+
+  // 右声道（延迟 0.6ms）
+  const panR = offlineCtx.createStereoPanner();
+  panR.pan.value = 0.15; // 微偏右
+  const gainR = offlineCtx.createGain();
+  gainR.gain.value = VOICE_GAIN * (1 - REVERB_MIX) * 0.95; // 右声道略低避免梳状滤波
+
+  // 湿声（混响）通路
+  const wetGain = offlineCtx.createGain();
+  wetGain.gain.value = VOICE_GAIN * REVERB_MIX;
+  const reverbIR = generateReverbIR(offlineCtx, 2.5, 2.0);
+  const convolver = offlineCtx.createConvolver();
+  convolver.buffer = reverbIR;
+
+  // 信号链:
+  // source → EQ → deEss → envelope ──┬── gainL → panL → limiter  (左·干声)
+  //                                   ├── delay → gainR → panR → limiter  (右·Haas)
+  //                                   └── convolver → wetGain → limiter  (混响)
   vSource.connect(warmEQ).connect(deEss).connect(voiceEnvelope);
-  voiceEnvelope.connect(dryGain).connect(masterLimiter);
+  voiceEnvelope.connect(gainL).connect(panL).connect(masterLimiter);
+  voiceEnvelope.connect(haasDelay).connect(gainR).connect(panR).connect(masterLimiter);
   voiceEnvelope.connect(convolver).connect(wetGain).connect(masterLimiter);
   vSource.start(voiceStartTime);
 
   // ────────────────────────────────────────────
-  // 4. 三段双耳节拍（Alpha → Theta → Delta 渐变）
+  // 4. 三段双耳节拍 + 等时节拍（Alpha → Theta → Delta 渐变）
   // ────────────────────────────────────────────
-  console.log("[Mixing] 注入三段双耳节拍...");
+  console.log("[Mixing] 注入三段双耳节拍 + 等时节拍...");
   
   const binauralTotalDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
   const thirdPoint = binauralTotalDuration / 3;
   
-  // 第一段：Alpha 波 (10Hz 放松清醒)
+  // 双耳节拍（需要耳机）
   addBinauralBeats(offlineCtx, voiceStartTime, thirdPoint, 180, 10);
-  // 第二段：Theta 波 (6Hz 深度冥想)
   addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 180, 6);
-  // 第三段：Low Theta/Delta 边缘 (4Hz 超深度/入眠)
   addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 180, 4);
+  
+  // 等时节拍（无需耳机，互补引导）
+  addIsochronalTones(offlineCtx, voiceStartTime, thirdPoint, 400, 10);
+  addIsochronalTones(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 380, 6);
+  addIsochronalTones(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 360, 4);
 
   // ────────────────────────────────────────────
   // 5. 段落级声境纹理（根据每段 ambientHint 动态切换 + crossfade）
