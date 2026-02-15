@@ -239,6 +239,12 @@ const App: React.FC = () => {
       voiceBuffer,
       track.url,
       script.sections,
+      (stage, mixPercent) => {
+        // 混音阶段映射到总进度的 80%~97%
+        const mappedProgress = 80 + Math.floor(mixPercent * 0.17);
+        setProgress(mappedProgress);
+        console.log(`[Mixing UI] ${stage} (${mixPercent}%)`);
+      },
     );
 
     setProgress(100);

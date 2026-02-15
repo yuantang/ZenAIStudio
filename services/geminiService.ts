@@ -158,6 +158,71 @@ const addTransitionMarker = (text: string, pauseSeconds: number, sectionType?: s
 };
 
 /**
+ * TTS 韵律标点注入 — 通过中文标点控制 Gemini TTS 的语速和停顿
+ * Gemini TTS 不支持 SSML，但对标点符号非常敏感：
+ *   - 省略号「……」→ 0.3-0.5s 停顿
+ *   - 逗号「，」→ 0.2s 微停顿
+ *   - 破折号「——」→ 0.4s 情感停顿 + 轻微音调变化
+ *   - 句号「。」→ 0.3s 正常停顿
+ */
+const injectProsodyMarkers = (text: string, sectionType?: string): string => {
+  let processed = text;
+  
+  // (1) 所有段落通用：在长句中每 25-40 字插入一个微停顿逗号（仅在无标点时）
+  // 查找连续 30 字以上没有标点的段落，在中间自然位置插入逗号
+  processed = processed.replace(/([^，。！？；：、\n]{25,40})/g, (match) => {
+    // 在中间偏后位置找一个合适的插入点（避免拆词）
+    const mid = Math.floor(match.length * 0.6);
+    const insertPos = match.indexOf('的', mid) !== -1 ? match.indexOf('的', mid) + 1
+      : match.indexOf('了', mid) !== -1 ? match.indexOf('了', mid) + 1
+      : match.indexOf('在', mid) !== -1 ? match.indexOf('在', mid) + 1
+      : -1;
+    if (insertPos > 0 && insertPos < match.length - 3) {
+      return match.slice(0, insertPos) + '，' + match.slice(insertPos);
+    }
+    return match;
+  });
+
+  // (2) 段落类型特定的韵律注入
+  switch (sectionType) {
+    case 'intro':
+      // 开场：段首添加缓慢进入的省略号
+      processed = '……' + processed;
+      break;
+      
+    case 'breathing':
+      // 呼吸段落：在数字/动作词前加停顿，语速极慢
+      processed = processed
+        .replace(/吸/g, '……吸')
+        .replace(/呼/g, '……呼')
+        .replace(/屏/g, '……屏')
+        .replace(/保持/g, '……保持');
+      break;
+      
+    case 'body-scan':
+      // 身体扫描：在身体部位词前加微停顿
+      processed = processed
+        .replace(/(头顶|额头|眉心|眼睛|脸颊|下巴|脖颈|肩膀|双臂|双手|胸腔|腹部|腰部|臀部|双腿|膝盖|小腿|双脚|脚底)/g, '，$1');
+      break;
+      
+    case 'visualization':
+      // 意象段落：在感官动词前加破折号
+      processed = processed
+        .replace(/(感受|想象|看到|听到|触碰|感知|注意到)/g, '——$1');
+      break;
+      
+    case 'closing':
+      // 结束段落：逐渐放慢，多加省略号
+      processed = processed
+        .replace(/。/g, '……。')
+        .replace(/感谢/g, '……感谢');
+      break;
+  }
+
+  return processed;
+};
+
+/**
  * 内部工具：单次 TTS 调用
  */
 const callTTS = async (
@@ -290,7 +355,9 @@ export const synthesizeFullMeditation = async (
   const targetVoice = voiceName || 'Zephyr';
 
   const sectionTexts = script.sections.map((section, idx) => {
-    let text = section.content;
+    // 先注入韵律控制标点（控制 TTS 语速/停顿）
+    let text = injectProsodyMarkers(section.content, section.type);
+    // 再添加段落间过渡标记
     if (idx < script.sections.length - 1) {
       text = addTransitionMarker(text, section.pauseSeconds || 3, section.type);
     }

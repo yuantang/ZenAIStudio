@@ -107,7 +107,7 @@ export async function mixMeditationAudio(
 
   let bgBuffer: AudioBuffer | null = null;
   try {
-    console.log(`[Step 3: Mixing] 正在获取背景音乐: ${bgMusicUrl}`);
+    console.log(`[Mixing] 加载背景音乐: ${bgMusicUrl}`);
     // 关键修复：使用 mode: 'cors' 并确保服务器支持
     const resp = await fetch(bgMusicUrl, { 
       mode: 'cors',
@@ -799,7 +799,8 @@ function getDominantAmbientHint(sections?: { ambientHint?: string }[]): string {
 export async function mixSingleVoiceAudio(
   voiceBuffer: AudioBuffer,
   bgMusicUrl: string,
-  scriptSections?: { type?: string; ambientHint?: string; pauseSeconds?: number }[]
+  scriptSections?: { type?: string; ambientHint?: string; pauseSeconds?: number }[],
+  onProgress?: (stage: string, percent: number) => void
 ): Promise<Blob> {
   const sampleRate = 44100;
   const BGM_BASE_GAIN = 0.18;
@@ -896,23 +897,51 @@ export async function mixSingleVoiceAudio(
   outroSrc.start(voiceEndTime + outroGap);
 
   // ────────────────────────────────────────────
-  // 3. 语音轨道 + Haas 展宽 + 混响 + 暖色 EQ
+  // 3. 语音轨道 + De-esser + Haas 展宽 + 混响 + 暖色 EQ
   // ────────────────────────────────────────────
-  console.log("[Mixing] 应用语音 Haas 展宽 + 混响 + 暖色 EQ...");
+  console.log("[Mixing] 应用语音 De-esser + Haas 展宽 + 混响 + 暖色 EQ...");
+  onProgress?.('处理语音轨道', 30);
 
   const vSource = offlineCtx.createBufferSource();
   vSource.buffer = voiceBuffer;
 
-  // 暖色 EQ：低频增益 + 高频滚降
+  // 暖色 EQ：低频增益
   const warmEQ = offlineCtx.createBiquadFilter();
   warmEQ.type = 'lowshelf';
   warmEQ.frequency.value = 300;
   warmEQ.gain.value = 3.0; // +3dB 低频温暖度
 
-  const deEss = offlineCtx.createBiquadFilter();
-  deEss.type = 'highshelf';
-  deEss.frequency.value = 6000;
-  deEss.gain.value = -4.0; // -4dB 高频滚降，去除 TTS 的尖锐感
+  // ── 频率感知 De-esser（替代之前的 highshelf 一刀切）──
+  // 原理：将信号分为两路（全频 + 齿音频段），齿音频段通过侧链压缩器动态衰减
+  // 仅当 4-8kHz 能量超阈值时才压缩，保留正常辅音清晰度
+
+  // (A) 齿音频段隔离滤波器 (bandpass 4-8kHz)
+  const deEssBP = offlineCtx.createBiquadFilter();
+  deEssBP.type = 'bandpass';
+  deEssBP.frequency.value = 5800; // 中心频率
+  deEssBP.Q.value = 1.5; // 覆盖 ~4kHz-8kHz
+
+  // (B) 齿音频段压缩器
+  const deEssCompressor = offlineCtx.createDynamicsCompressor();
+  deEssCompressor.threshold.value = -30; // 较低阈值，敏感检测齿音
+  deEssCompressor.knee.value = 6;
+  deEssCompressor.ratio.value = 8; // 高压缩比
+  deEssCompressor.attack.value = 0.003; // 3ms 快速响应
+  deEssCompressor.release.value = 0.05; // 50ms 释放
+
+  // (C) 齿音频段衰减增益（使压缩后的齿音不要太重、与全频段混合）
+  const deEssGain = offlineCtx.createGain();
+  deEssGain.gain.value = 0.4; // 齿音频段只保留 40%
+
+  // (D) 非齿音频段通路（中低频 notch 过滤掉齿音频段）
+  const deEssNotch = offlineCtx.createBiquadFilter();
+  deEssNotch.type = 'notch';
+  deEssNotch.frequency.value = 5800;
+  deEssNotch.Q.value = 1.5; // 与 bandpass 对应
+
+  // (E) 合并节点
+  const deEssMerge = offlineCtx.createGain();
+  deEssMerge.gain.value = 1.0;
 
   // 淡入淡出包络
   const voiceEnvelope = offlineCtx.createGain();
@@ -922,21 +951,20 @@ export async function mixSingleVoiceAudio(
   voiceEnvelope.gain.linearRampToValueAtTime(0, voiceEndTime);
 
   // ── Haas Effect 立体声展宽 ──
-  // 原理：左声道正常，右声道延迟 0.6ms → 产生空间感（像在 1-2m 外说话）
   const haasDelay = offlineCtx.createDelay(0.01);
-  haasDelay.delayTime.value = 0.0006; // 0.6ms ≈ 左右耳距离差
+  haasDelay.delayTime.value = 0.0006; // 0.6ms
 
   // 左声道（正常）
   const panL = offlineCtx.createStereoPanner();
-  panL.pan.value = -0.15; // 微偏左
+  panL.pan.value = -0.15;
   const gainL = offlineCtx.createGain();
   gainL.gain.value = VOICE_GAIN * (1 - REVERB_MIX);
 
   // 右声道（延迟 0.6ms）
   const panR = offlineCtx.createStereoPanner();
-  panR.pan.value = 0.15; // 微偏右
+  panR.pan.value = 0.15;
   const gainR = offlineCtx.createGain();
-  gainR.gain.value = VOICE_GAIN * (1 - REVERB_MIX) * 0.95; // 右声道略低避免梳状滤波
+  gainR.gain.value = VOICE_GAIN * (1 - REVERB_MIX) * 0.95;
 
   // 湿声（混响）通路
   const wetGain = offlineCtx.createGain();
@@ -946,10 +974,15 @@ export async function mixSingleVoiceAudio(
   convolver.buffer = reverbIR;
 
   // 信号链:
-  // source → EQ → deEss → envelope ──┬── gainL → panL → limiter  (左·干声)
-  //                                   ├── delay → gainR → panR → limiter  (右·Haas)
-  //                                   └── convolver → wetGain → limiter  (混响)
-  vSource.connect(warmEQ).connect(deEss).connect(voiceEnvelope);
+  // vSource → warmEQ ──┬── deEssBP → compressor → deEssGain ──┬── voiceEnvelope → ...
+  //                     └── deEssNotch ────────────────────────┘
+  // voiceEnvelope ──┬── gainL → panL → limiter  (左·干声)
+  //                 ├── haasDelay → gainR → panR → limiter  (右·Haas)
+  //                 └── convolver → wetGain → limiter  (混响)
+  vSource.connect(warmEQ);
+  warmEQ.connect(deEssBP).connect(deEssCompressor).connect(deEssGain).connect(deEssMerge);
+  warmEQ.connect(deEssNotch).connect(deEssMerge);
+  deEssMerge.connect(voiceEnvelope);
   voiceEnvelope.connect(gainL).connect(panL).connect(masterLimiter);
   voiceEnvelope.connect(haasDelay).connect(gainR).connect(panR).connect(masterLimiter);
   voiceEnvelope.connect(convolver).connect(wetGain).connect(masterLimiter);
@@ -959,6 +992,7 @@ export async function mixSingleVoiceAudio(
   // 4. 三段双耳节拍 + 等时节拍（Alpha → Theta → Delta 渐变）
   // ────────────────────────────────────────────
   console.log("[Mixing] 注入三段双耳节拍 + 等时节拍...");
+  onProgress?.('注入脑波引导', 45);
   
   const binauralTotalDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
   const thirdPoint = binauralTotalDuration / 3;
@@ -977,6 +1011,7 @@ export async function mixSingleVoiceAudio(
   // 5. 段落级声境纹理（根据每段 ambientHint 动态切换 + crossfade）
   // ────────────────────────────────────────────
   console.log("[Mixing] 生成段落级声境纹理...");
+  onProgress?.('生成声境纹理', 55);
   
   if (scriptSections && scriptSections.length > 0) {
     // 估算每段在时间线上的位置（按 content 字数比例分配语音时长）
@@ -1083,16 +1118,20 @@ export async function mixSingleVoiceAudio(
   // 6. 离线渲染 + LUFS 标准化
   // ────────────────────────────────────────────
   console.log(`[Mixing] 开始离线渲染 (${totalDuration.toFixed(1)}s)...`);
+  onProgress?.('离线渲染中', 65);
   const renderedBuffer = await offlineCtx.startRendering();
   console.log("[Mixing] 渲染完成，执行 LUFS 标准化...");
+  onProgress?.('LUFS 标准化', 85);
   
   // 应用 LUFS 响度标准化（目标 -16 LUFS）
   normalizeLUFS(renderedBuffer, -16);
   
   // 优先尝试压缩格式（Opus/WebM），失败则回退到 WAV
   console.log("[Mixing] 编码输出...");
+  onProgress?.('编码输出', 92);
   const blob = await encodeAudio(renderedBuffer);
   console.log(`[Mixing] 完成！格式: ${blob.type}, 大小: ${(blob.size / 1024 / 1024).toFixed(1)} MB`);
+  onProgress?.('完成', 100);
   return blob;
 }
 
