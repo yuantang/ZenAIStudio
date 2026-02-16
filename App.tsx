@@ -126,6 +126,7 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [progress, setProgress] = useState(0);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+  const [mixingStage, setMixingStage] = useState("");
   const [result, setResult] = useState<MeditationResult | null>(null);
   const [errorInfo, setErrorInfo] = useState<string | null>(null);
   const [history, setHistory] = useState<MeditationResult[]>(() =>
@@ -243,7 +244,7 @@ const App: React.FC = () => {
         // 混音阶段映射到总进度的 80%~97%
         const mappedProgress = 80 + Math.floor(mixPercent * 0.17);
         setProgress(mappedProgress);
-        console.log(`[Mixing UI] ${stage} (${mixPercent}%)`);
+        setMixingStage(stage);
       },
     );
 
@@ -290,10 +291,15 @@ const App: React.FC = () => {
   };
 
   const downloadAudio = (blob: Blob, name: string) => {
+    const ext = blob.type.includes("webm")
+      ? "webm"
+      : blob.type.includes("mp3")
+        ? "mp3"
+        : "wav";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ZenAI_${name.replace(/\s+/g, "_")}.wav`;
+    a.download = `${name}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -716,6 +722,74 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {/* 沉浸式生成进度面板 */}
+          {(status === GenerationStatus.WRITING ||
+            status === GenerationStatus.VOICING ||
+            status === GenerationStatus.MIXING ||
+            status === GenerationStatus.BATCH_PROCESSING) && (
+            <div className="glass p-12 md:p-16 rounded-[4rem] shadow-2xl shadow-indigo-100/50 relative overflow-hidden">
+              {/* 呼吸脉冲背景 */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-64 h-64 bg-indigo-100/20 rounded-full blur-3xl breathing-glow"></div>
+              </div>
+
+              <div className="relative z-10 text-center">
+                {/* 旋转加载图标 */}
+                <div className="mb-8 inline-flex">
+                  <div className="w-20 h-20 bg-gradient-to-br from-indigo-50 to-violet-50 rounded-[2rem] flex items-center justify-center shadow-lg">
+                    <RefreshCw
+                      className="w-8 h-8 text-indigo-400 animate-spin"
+                      style={{ animationDuration: "3s" }}
+                    />
+                  </div>
+                </div>
+
+                {/* 阶段标题 */}
+                <h3 className="text-2xl font-serif font-bold text-slate-800 mb-3">
+                  {status === GenerationStatus.WRITING && "✍️ 正在撰写冥想剧本"}
+                  {status === GenerationStatus.VOICING && "🎤 正在合成引导语音"}
+                  {status === GenerationStatus.MIXING && "🎛️ 正在混音母带处理"}
+                  {status === GenerationStatus.BATCH_PROCESSING &&
+                    "📦 批量处理中"}
+                </h3>
+
+                {/* 混音子阶段 */}
+                {status === GenerationStatus.MIXING && mixingStage && (
+                  <p className="text-indigo-500 text-xs font-bold mb-6 tracking-wide">
+                    {mixingStage}
+                  </p>
+                )}
+
+                {/* 进度条 */}
+                <div className="max-w-xs mx-auto mb-6">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-400 to-violet-500 rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between mt-2">
+                    <span className="text-[9px] text-slate-400 font-bold">
+                      {progress}%
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {status === GenerationStatus.WRITING && "剧本生成"}
+                      {status === GenerationStatus.VOICING && "语音合成"}
+                      {status === GenerationStatus.MIXING && "混音渲染"}
+                      {status === GenerationStatus.BATCH_PROCESSING &&
+                        "批量处理"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 轮播提示语 */}
+                <p className="text-sm text-slate-400 font-light animate-pulse">
+                  {LOADING_MESSAGES[loadingMsgIdx]}
+                </p>
+              </div>
+            </div>
+          )}
+
           {status === GenerationStatus.ERROR && (
             <div className="glass p-12 rounded-[3rem] text-center border-red-100 border-2">
               <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-6" />
@@ -762,8 +836,13 @@ const App: React.FC = () => {
                 </h3>
                 <div className="text-indigo-500 text-[10px] font-black tracking-widest uppercase mb-12 flex items-center justify-center gap-3">
                   <span className="w-8 h-px bg-indigo-100"></span>
-                  {(result.audioBlob.size / 1024 / 1024).toFixed(1)} MB WAV •{" "}
-                  {selectedDuration} MIN SESSION
+                  {(result.audioBlob.size / 1024 / 1024).toFixed(1)} MB{" "}
+                  {result.audioBlob.type.includes("webm")
+                    ? "OPUS"
+                    : result.audioBlob.type.includes("mp3")
+                      ? "MP3"
+                      : "WAV"}{" "}
+                  • {selectedDuration} MIN SESSION
                   <span className="w-8 h-px bg-indigo-100"></span>
                 </div>
 
