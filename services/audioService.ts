@@ -385,8 +385,8 @@ function generateReverbIR(
 }
 
 /**
- * 合成藏传颂钵声（Tibetan Singing Bowl）
- * 加法合成：基频 + 多个非谐波泛音 + 慢速调制 = 真实颂钵的金属共鸣
+ * 合成藏传颂钵声 v2（Tibetan Singing Bowl）
+ * 升级：7 层泛音 + 双阶段击打 + 谐波游走 + 金属微光噪声
  */
 function generateSingingBowl(
   ctx: OfflineAudioContext,
@@ -395,33 +395,69 @@ function generateSingingBowl(
 ): AudioBuffer {
   const sampleRate = ctx.sampleRate;
   const length = Math.ceil(sampleRate * duration);
-  const buffer = ctx.createBuffer(1, length, sampleRate);
-  const data = buffer.getChannelData(0);
+  const buffer = ctx.createBuffer(2, length, sampleRate); // 立体声
+  const dataL = buffer.getChannelData(0);
+  const dataR = buffer.getChannelData(1);
 
-  // 颂钵的特征泛音（非整数倍，这是金属碗的声学特征）
+  // 颂钵声学测量值：非整数倍泛音比是金属碗的核心特征
+  // 每个泛音有独立的衰减率、振幅、和立体声偏移
   const harmonics = [
-    { ratio: 1.0,   amp: 1.0,  decay: 0.8  },  // 基频
-    { ratio: 2.71,  amp: 0.6,  decay: 1.0  },  // 第二泛音
-    { ratio: 4.95,  amp: 0.35, decay: 1.3  },  // 第三泛音
-    { ratio: 7.77,  amp: 0.2,  decay: 1.8  },  // 第四泛音
-    { ratio: 11.2,  amp: 0.1,  decay: 2.2  },  // 高次泛音
+    { ratio: 1.0,    amp: 1.0,  decay: 0.7,  pan: 0.0,  drift: 0.001  },  // 基频
+    { ratio: 2.71,   amp: 0.55, decay: 0.9,  pan: 0.15, drift: 0.0015 },  // 第 2 泛音
+    { ratio: 4.95,   amp: 0.3,  decay: 1.1,  pan: -0.1, drift: 0.002  },  // 第 3 泛音
+    { ratio: 7.77,   amp: 0.18, decay: 1.5,  pan: 0.2,  drift: 0.0018 },  // 第 4 泛音
+    { ratio: 11.2,   amp: 0.09, decay: 1.9,  pan: -0.15,drift: 0.0025 },  // 第 5 泛音
+    { ratio: 15.1,   amp: 0.05, decay: 2.3,  pan: 0.25, drift: 0.003  },  // 第 6 泛音（金属高光）
+    { ratio: 19.8,   amp: 0.025,decay: 2.8,  pan: -0.2, drift: 0.004  },  // 第 7 泛音（空气感）
   ];
+
+  // 随机初始相位，避免每次颂钵听起来一模一样
+  const phases = harmonics.map(() => Math.random() * Math.PI * 2);
 
   for (let i = 0; i < length; i++) {
     const t = i / sampleRate;
-    let sample = 0;
-    
-    for (const h of harmonics) {
-      const freq = fundamentalFreq * h.ratio;
-      const envelope = Math.exp(-t * h.decay);
-      // 击打瞬态：前 20ms 的强烈冲击
-      const attack = t < 0.02 ? (t / 0.02) : 1.0;
-      // 微妙的频率颤动（颂钵的"吟唱"效果）
-      const vibrato = 1 + 0.002 * Math.sin(2 * Math.PI * 4.5 * t);
-      sample += h.amp * envelope * attack * Math.sin(2 * Math.PI * freq * vibrato * t);
+    let sampleL = 0;
+    let sampleR = 0;
+
+    for (let h = 0; h < harmonics.length; h++) {
+      const { ratio, amp, decay, pan, drift } = harmonics[h];
+      const freq = fundamentalFreq * ratio;
+
+      // 指数衰减包络
+      const envelope = Math.exp(-t * decay);
+
+      // 双阶段击打瞬态：硬击（2ms）+ 软扩散（18ms）
+      const hardAttack = t < 0.002 ? t / 0.002 : 1.0;
+      const softSpread = t < 0.02 ? 0.7 + 0.3 * (t / 0.02) : 1.0;
+      const attack = hardAttack * softSpread;
+
+      // 谐波游走：每个泛音独立的缓慢频率漂移（模拟碗体温度微变）
+      const freqWander = 1 + drift * Math.sin(2 * Math.PI * (0.3 + h * 0.1) * t);
+
+      // 吟唱颤音（较低泛音更明显）
+      const vibDepth = h < 3 ? 0.003 : 0.001;
+      const vibrato = 1 + vibDepth * Math.sin(2 * Math.PI * (4.5 + h * 0.3) * t);
+
+      const osc = Math.sin(2 * Math.PI * freq * freqWander * vibrato * t + phases[h]);
+      const val = amp * envelope * attack * osc;
+
+      // 立体声分配
+      const gainL = 0.5 + pan * 0.5;
+      const gainR = 0.5 - pan * 0.5;
+      sampleL += val * gainL;
+      sampleR += val * gainR;
     }
-    
-    data[i] = sample * 0.15; // 总体音量控制
+
+    // 金属微光层：高频噪声脉冲，仅在击打后 0.5s 内显著
+    const shimmerEnvelope = Math.exp(-t * 5);
+    if (shimmerEnvelope > 0.01) {
+      const shimmer = (Math.random() * 2 - 1) * 0.03 * shimmerEnvelope;
+      sampleL += shimmer;
+      sampleR += shimmer * 0.8; // 略微不同增加空间感
+    }
+
+    dataL[i] = sampleL * 0.15;
+    dataR[i] = sampleR * 0.15;
   }
 
   return buffer;
@@ -859,11 +895,69 @@ export async function mixSingleVoiceAudio(
     // 前奏渐入
     bgGain.gain.setValueAtTime(0, 0);
     bgGain.gain.linearRampToValueAtTime(BGM_BASE_GAIN, voiceStartTime);
-    // 人声 ducking
-    bgGain.gain.setValueAtTime(BGM_BASE_GAIN, voiceStartTime);
-    bgGain.gain.exponentialRampToValueAtTime(BGM_DUCKED_GAIN, voiceStartTime + 1.5);
-    bgGain.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
-    bgGain.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
+
+    // ── 段落感知动态 Ducking ──
+    // 不同段落类型使用不同的 ducking 深度
+    const getDuckLevel = (sectionType?: string): number => {
+      switch (sectionType) {
+        case 'breathing':     return 0.10;  // 呼吸段 BGM 较高（有停顿空间）
+        case 'body-scan':     return 0.04;  // 身体扫描需要极安静的背景
+        case 'visualization': return 0.04;  // 冥想想象也需要极安静
+        case 'intro':         return 0.07;  // 开场介绍中等
+        case 'closing':       return 0.07;  // 结束语中等
+        default:              return BGM_DUCKED_GAIN;
+      }
+    };
+
+    if (scriptSections && scriptSections.length > 0) {
+      // 估算每个段落在时间线中的位置
+      const voiceDuration = voiceBuffer.duration;
+      const totalTextLength = scriptSections.reduce((sum, s) => 
+        sum + (s.pauseSeconds || 0) + 1, 0);
+      
+      let currentTime = voiceStartTime;
+      for (let si = 0; si < scriptSections.length; si++) {
+        const section = scriptSections[si];
+        const sectionWeight = ((section.pauseSeconds || 0) + 1) / totalTextLength;
+        const sectionDuration = voiceDuration * sectionWeight;
+        const duckLevel = getDuckLevel(section.type);
+        const rampTime = 0.8; // 段落间过渡时间
+
+        // 过渡到此段落的 ducking 深度
+        bgGain.gain.setValueAtTime(bgGain.gain.value || BGM_BASE_GAIN, currentTime);
+        bgGain.gain.exponentialRampToValueAtTime(
+          Math.max(duckLevel, 0.001), 
+          currentTime + rampTime
+        );
+
+        // 如果有 pauseSeconds（段落间的安静间隙），在间隙中短暂恢复 BGM
+        const pause = section.pauseSeconds || 0;
+        if (pause > 2 && si < scriptSections.length - 1) {
+          const pauseStart = currentTime + sectionDuration - pause;
+          const breatheGain = Math.min(BGM_BASE_GAIN * 0.6, duckLevel * 3);
+          bgGain.gain.setValueAtTime(duckLevel, pauseStart);
+          bgGain.gain.exponentialRampToValueAtTime(breatheGain, pauseStart + 1.0);
+          bgGain.gain.setValueAtTime(breatheGain, pauseStart + pause - 1.0);
+          bgGain.gain.exponentialRampToValueAtTime(
+            getDuckLevel(scriptSections[si + 1]?.type), 
+            pauseStart + pause
+          );
+        }
+
+        currentTime += sectionDuration;
+      }
+
+      // 语音结束后恢复
+      bgGain.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
+      bgGain.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
+    } else {
+      // 无段落信息时的 fallback：简单全程 ducking
+      bgGain.gain.setValueAtTime(BGM_BASE_GAIN, voiceStartTime);
+      bgGain.gain.exponentialRampToValueAtTime(BGM_DUCKED_GAIN, voiceStartTime + 1.5);
+      bgGain.gain.setValueAtTime(BGM_DUCKED_GAIN, voiceEndTime);
+      bgGain.gain.exponentialRampToValueAtTime(BGM_BASE_GAIN, voiceEndTime + 3.0);
+    }
+
     // 结尾渐出
     const fadeStart = totalDuration - fadeOutTail;
     bgGain.gain.setValueAtTime(BGM_BASE_GAIN, fadeStart);

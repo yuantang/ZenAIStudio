@@ -170,6 +170,27 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [status]);
 
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 忽略输入框内的按键
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (result) togglePlay();
+      } else if (e.code === "Escape") {
+        if (showSettings) setShowSettings(false);
+        else if (showLibrary) setShowLibrary(false);
+        else if (showStats) setShowStats(false);
+        else if (showCourses) setShowCourses(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [result, showSettings, showLibrary, showStats, showCourses]);
+
   const saveApiKey = () => {
     if (tempApiKey.trim()) {
       localStorage.setItem("ZENAI_API_KEY", tempApiKey.trim());

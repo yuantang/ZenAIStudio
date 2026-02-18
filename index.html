@@ -7,10 +7,23 @@
   <title>ZenAI Studio - 顶级 AI 智能冥想生成系统</title>
   <meta name="description" content="使用 Gemini 2.5 系列模型驱动的专业冥想音频生成工作室，提供高保真 TTS 和动态环境音混音。">
   
-  <!-- Vercel/Social Media Meta -->
+  <!-- SEO & Social Media -->
   <meta property="og:title" content="ZenAI Studio - AI 智能冥想生成">
   <meta property="og:description" content="定制化深度心理疗愈，分钟级生成专业冥想音频。">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="zh_CN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ZenAI Studio">
+  <meta name="twitter:description" content="Gemini 驱动的深度冥想创作系统">
   <meta name="theme-color" content="#4f46e5">
+  <meta name="color-scheme" content="light">
+
+  <!-- PWA 支持 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ZenAI">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧘</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧘</text></svg>">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
@@ -41,11 +54,32 @@
       0%, 100% { transform: scale(1); opacity: 0.3; }
       50% { transform: scale(1.1); opacity: 0.6; }
     }
+    /* 圆形可视化器脉冲 */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.5; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+      100% { transform: scale(0.95); opacity: 0.5; }
+    }
+    /* 进度条闪光 */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .progress-shimmer {
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
     /* 自定义滚动条 */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.1); border-radius: 10px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(79, 70, 229, 0.2); }
+    /* 无障碍：焦点可见性 */
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
   </style>
 <script type="importmap">
 {
