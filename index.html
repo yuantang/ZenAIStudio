@@ -16,7 +16,7 @@
   <meta name="twitter:title" content="ZenAI Studio">
   <meta name="twitter:description" content="Gemini 驱动的深度冥想创作系统">
   <meta name="theme-color" content="#4f46e5">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
 
   <!-- PWA 支持 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -26,11 +26,16 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧘</text></svg>">
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #4f46e5;
       --bg-gradient: radial-gradient(circle at top right, #fdfbfb 0%, #ebedee 100%);
+    }
+    .dark {
+      --bg-gradient: radial-gradient(circle at top right, #0f172a 0%, #1e293b 100%);
+      color-scheme: dark;
     }
     body {
       font-family: 'Inter', "Microsoft YaHei", sans-serif;
@@ -46,6 +51,10 @@
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+    .dark .glass {
+      background: rgba(30, 41, 59, 0.75);
+      border: 1px solid rgba(100, 116, 139, 0.2);
     }
     .breathing-glow {
       animation: breathe 4s ease-in-out infinite;
@@ -74,12 +83,15 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.1); border-radius: 10px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(79, 70, 229, 0.2); }
-    /* 无障碍：焦点可见性 */
+    .dark ::-webkit-scrollbar-thumb { background: rgba(129, 140, 248, 0.15); }
+    .dark ::-webkit-scrollbar-thumb:hover { background: rgba(129, 140, 248, 0.3); }
+    /* 无障碍 */
     :focus-visible {
       outline: 2px solid var(--primary);
       outline-offset: 2px;
       border-radius: 4px;
     }
+    .dark ::selection { background: rgba(99, 102, 241, 0.3); }
   </style>
 <script type="importmap">
 {
@@ -93,7 +105,7 @@
 }
 </script>
 </head>
-<body class="min-h-screen text-slate-900 selection:bg-indigo-100">
+<body class="min-h-screen text-slate-900 dark:text-slate-100 selection:bg-indigo-100 dark:selection:bg-indigo-900 transition-colors">
   <div id="root"></div>
   <!-- 显式引入主模块 -->
   <script type="module" src="index.tsx"></script>

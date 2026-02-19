@@ -49,6 +49,8 @@ import { ContentLibrary } from "./components/ContentLibrary";
 import { VisualAmbience } from "./components/VisualAmbience";
 import { MeditationStats } from "./components/MeditationStats";
 import { CourseCatalog } from "./components/CourseCatalog";
+import { AudioProgressBar } from "./components/AudioProgressBar";
+import { DarkModeToggle } from "./components/DarkModeToggle";
 
 const LOADING_MESSAGES = [
   "正在对齐您的呼吸节奏...",
@@ -425,10 +427,13 @@ const App: React.FC = () => {
           <ShieldCheck className="w-3.5 h-3.5 mr-2 text-indigo-500" />{" "}
           Professional ZenAI Studio
         </div>
-        <h1 className="text-5xl md:text-7xl font-serif font-bold text-slate-900 mb-6 tracking-tight">
+        <div className="absolute top-0 right-0">
+          <DarkModeToggle />
+        </div>
+        <h1 className="text-5xl md:text-7xl font-serif font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
           ZenAI Studio
         </h1>
-        <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed px-4">
+        <p className="text-lg md:text-xl text-slate-400 dark:text-slate-500 max-w-2xl mx-auto font-light leading-relaxed px-4">
           由 Gemini 驱动的深度冥想创作系统。
           <br className="hidden md:block" />
           为您定制绝对稳定的疗愈频率。
@@ -439,7 +444,7 @@ const App: React.FC = () => {
         {/* 控制台 */}
         <div className="lg:col-span-5 space-y-8 order-2 lg:order-1">
           <div className="glass p-8 md:p-12 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-white/50">
-            <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-8 flex items-center justify-between">
               <span className="flex items-center">
                 <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
               </span>
@@ -852,7 +857,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
 
-                <h3 className="text-3xl font-serif font-black text-slate-900 mb-4 tracking-tight">
+                <h3 className="text-3xl font-serif font-black text-slate-900 dark:text-white mb-4 tracking-tight">
                   {result.script.title}
                 </h3>
                 <div className="text-indigo-500 text-[10px] font-black tracking-widest uppercase mb-12 flex items-center justify-center gap-3">
@@ -867,12 +872,16 @@ const App: React.FC = () => {
                   <span className="w-8 h-px bg-indigo-100"></span>
                 </div>
 
-                <div className="mb-12">
+                <div className="mb-6">
                   <AudioVisualizer
                     audioRef={audioRef}
                     isPlaying={isPlaying}
                     color="#6366f1"
                   />
+                </div>
+
+                <div className="mb-10 px-4">
+                  <AudioProgressBar audioRef={audioRef} isPlaying={isPlaying} />
                 </div>
 
                 <div className="flex justify-center gap-4">
