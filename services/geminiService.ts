@@ -68,7 +68,9 @@ export const generateMeditationScript = async (
       model: modelName, 
       contents: `请根据以下主题生成一份顶级的冥想引导脚本，确保其具备深度的疗愈价值和科学的放松节奏。
 
-【目标时长】：${durationMinutes} 分钟（请根据时长严格控制内容篇幅和段落数量，语音朗读总时长加上停顿时间应尽可能接近 ${durationMinutes} 分钟）
+【目标时长】：${durationMinutes} 分钟
+【字数硬约束】：冥想TTS以 120 字/分钟朗读，因此 ${durationMinutes} 分钟的总文字内容必须控制在 ${Math.round(durationMinutes * 120 * 0.7)}-${Math.round(durationMinutes * 120 * 0.85)} 字以内（含停顿时间扣除）。
+【特别注意】：宁可内容精炼也不要超字！请在写完后自行验证总字数，超出则删减。短时长（3-5分钟）只需2-4段精华，不要为了凑段落而草草结尾。
 ${personCtx}
 主题：${theme}`,
       config: {
