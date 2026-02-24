@@ -319,7 +319,12 @@ const App: React.FC = () => {
   const togglePlay = () => {
     if (audioRef.current) {
       if (isPlaying) audioRef.current.pause();
-      else audioRef.current.play();
+      else {
+        audioRef.current.play().catch((e) => {
+          console.error("Audio playback failed:", e);
+          alert("音频播放失败：" + e.message + "，请尝试刷新重发。");
+        });
+      }
       setIsPlaying(!isPlaying);
     }
   };
@@ -919,10 +924,17 @@ const App: React.FC = () => {
       </footer>
 
       {/* 音频标签及其事件处理 */}
-      {result && audioUrl && (
+      {result && (
         <audio
           ref={audioRef}
-          src={audioUrl}
+          src={audioUrl || ""}
+          preload="auto"
+          onError={(e) => {
+            console.error("Audio Element Error:", e.currentTarget.error);
+            alert(
+              "音频加载失败：" + (e.currentTarget.error?.message || "未知错误"),
+            );
+          }}
           onEnded={() => {
             setIsPlaying(false);
             // 如果是在课程中生成的，标记该天完成
