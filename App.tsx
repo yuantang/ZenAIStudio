@@ -155,6 +155,17 @@ const App: React.FC = () => {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioUrl, setAudioUrl] = useState<string>("");
+
+  useEffect(() => {
+    if (result) {
+      const url = URL.createObjectURL(result.audioBlob);
+      setAudioUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAudioUrl("");
+    }
+  }, [result]);
 
   useEffect(() => {
     setCurrentApiKey(getApiKey());
@@ -908,10 +919,10 @@ const App: React.FC = () => {
       </footer>
 
       {/* 音频标签及其事件处理 */}
-      {result && (
+      {result && audioUrl && (
         <audio
           ref={audioRef}
-          src={URL.createObjectURL(result.audioBlob)}
+          src={audioUrl}
           onEnded={() => {
             setIsPlaying(false);
             // 如果是在课程中生成的，标记该天完成
