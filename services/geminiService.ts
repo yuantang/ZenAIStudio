@@ -61,7 +61,7 @@ export const generateMeditationScript = async (
   const personCtx = buildPersonalizationContext(personalization);
   
   // 500 错误多发于 Pro 模型，重试时回退到 Flash
-  const modelName = retries < 2 ? 'gemini-1.5-pro-latest' : 'gemini-1.5-flash-latest';
+  const modelName = retries < 2 ? 'gemini-2.5-flash-preview-05-20' : 'gemini-2.0-flash';
   
   try {
     const response = await ai.models.generateContent({
