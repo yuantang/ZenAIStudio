@@ -384,84 +384,6 @@ function generateReverbIR(
   return buffer;
 }
 
-/**
- * 合成藏传颂钵声 v2（Tibetan Singing Bowl）
- * 升级：7 层泛音 + 双阶段击打 + 谐波游走 + 金属微光噪声
- */
-function generateSingingBowl(
-  ctx: OfflineAudioContext,
-  duration: number = 8.0,
-  fundamentalFreq: number = 220
-): AudioBuffer {
-  const sampleRate = ctx.sampleRate;
-  const length = Math.ceil(sampleRate * duration);
-  const buffer = ctx.createBuffer(2, length, sampleRate); // 立体声
-  const dataL = buffer.getChannelData(0);
-  const dataR = buffer.getChannelData(1);
-
-  // 颂钵声学测量值：非整数倍泛音比是金属碗的核心特征
-  // 每个泛音有独立的衰减率、振幅、和立体声偏移
-  const harmonics = [
-    { ratio: 1.0,    amp: 1.0,  decay: 0.7,  pan: 0.0,  drift: 0.001  },  // 基频
-    { ratio: 2.71,   amp: 0.55, decay: 0.9,  pan: 0.15, drift: 0.0015 },  // 第 2 泛音
-    { ratio: 4.95,   amp: 0.3,  decay: 1.1,  pan: -0.1, drift: 0.002  },  // 第 3 泛音
-    { ratio: 7.77,   amp: 0.18, decay: 1.5,  pan: 0.2,  drift: 0.0018 },  // 第 4 泛音
-    { ratio: 11.2,   amp: 0.09, decay: 1.9,  pan: -0.15,drift: 0.0025 },  // 第 5 泛音
-    { ratio: 15.1,   amp: 0.05, decay: 2.3,  pan: 0.25, drift: 0.003  },  // 第 6 泛音（金属高光）
-    { ratio: 19.8,   amp: 0.025,decay: 2.8,  pan: -0.2, drift: 0.004  },  // 第 7 泛音（空气感）
-  ];
-
-  // 随机初始相位，避免每次颂钵听起来一模一样
-  const phases = harmonics.map(() => Math.random() * Math.PI * 2);
-
-  for (let i = 0; i < length; i++) {
-    const t = i / sampleRate;
-    let sampleL = 0;
-    let sampleR = 0;
-
-    for (let h = 0; h < harmonics.length; h++) {
-      const { ratio, amp, decay, pan, drift } = harmonics[h];
-      const freq = fundamentalFreq * ratio;
-
-      // 指数衰减包络
-      const envelope = Math.exp(-t * decay);
-
-      // 双阶段击打瞬态：硬击（2ms）+ 软扩散（18ms）
-      const hardAttack = t < 0.002 ? t / 0.002 : 1.0;
-      const softSpread = t < 0.02 ? 0.7 + 0.3 * (t / 0.02) : 1.0;
-      const attack = hardAttack * softSpread;
-
-      // 谐波游走：每个泛音独立的缓慢频率漂移（模拟碗体温度微变）
-      const freqWander = 1 + drift * Math.sin(2 * Math.PI * (0.3 + h * 0.1) * t);
-
-      // 吟唱颤音（较低泛音更明显）
-      const vibDepth = h < 3 ? 0.003 : 0.001;
-      const vibrato = 1 + vibDepth * Math.sin(2 * Math.PI * (4.5 + h * 0.3) * t);
-
-      const osc = Math.sin(2 * Math.PI * freq * freqWander * vibrato * t + phases[h]);
-      const val = amp * envelope * attack * osc;
-
-      // 立体声分配
-      const gainL = 0.5 + pan * 0.5;
-      const gainR = 0.5 - pan * 0.5;
-      sampleL += val * gainL;
-      sampleR += val * gainR;
-    }
-
-    // 金属微光层：高频噪声脉冲，仅在击打后 0.5s 内显著
-    const shimmerEnvelope = Math.exp(-t * 5);
-    if (shimmerEnvelope > 0.01) {
-      const shimmer = (Math.random() * 2 - 1) * 0.03 * shimmerEnvelope;
-      sampleL += shimmer;
-      sampleR += shimmer * 0.8; // 略微不同增加空间感
-    }
-
-    dataL[i] = sampleL * 0.15;
-    dataR[i] = sampleR * 0.15;
-  }
-
-  return buffer;
-}
 
 /**
  * 生成柔和的水晶铃声（过渡标记用）
@@ -968,27 +890,38 @@ export async function mixSingleVoiceAudio(
   }
 
   // ────────────────────────────────────────────
-  // 2. 颂钵仪式声（开场 + 结束）
+  // 2. 颂钵仪式声（开场 + 结束） - 真实声学采样
   // ────────────────────────────────────────────
-  console.log("[Mixing] 合成颂钵仪式声...");
+  console.log("[Mixing] 加载真实颂钵音效...");
+  onProgress?.('加载仪式音效', 25);
   
-  // 开场颂钵（低频 220Hz，温暖深沉）
-  const introSB = generateSingingBowl(offlineCtx, bowlIntroDuration, 220);
-  const introSrc = offlineCtx.createBufferSource();
-  introSrc.buffer = introSB;
-  const introGain = offlineCtx.createGain();
-  introGain.gain.value = 0.9;
-  introSrc.connect(introGain).connect(masterLimiter);
-  introSrc.start(0);
+  try {
+    const bowlResp = await fetch('/bowl-hit.mp3');
+    if (bowlResp.ok) {
+      const bowlAb = await bowlResp.arrayBuffer();
+      const bowlBuffer = await offlineCtx.decodeAudioData(bowlAb);
+      
+      // 开场颂钵（稍微降低播放速率，深沉放松）
+      const introSrc = offlineCtx.createBufferSource();
+      introSrc.buffer = bowlBuffer;
+      introSrc.playbackRate.value = 0.85; // 降调
+      const introGain = offlineCtx.createGain();
+      introGain.gain.value = 1.2;
+      introSrc.connect(introGain).connect(masterLimiter);
+      introSrc.start(0);
 
-  // 结束颂钵（略高频 330Hz，明亮唤醒）
-  const outroSB = generateSingingBowl(offlineCtx, bowlOutroDuration, 330);
-  const outroSrc = offlineCtx.createBufferSource();
-  outroSrc.buffer = outroSB;
-  const outroGain = offlineCtx.createGain();
-  outroGain.gain.value = 0.7;
-  outroSrc.connect(outroGain).connect(masterLimiter);
-  outroSrc.start(voiceEndTime + outroGap);
+      // 结束颂钵（稍微提高播放速率，明亮唤醒）
+      const outroSrc = offlineCtx.createBufferSource();
+      outroSrc.buffer = bowlBuffer;
+      outroSrc.playbackRate.value = 1.05; // 升调
+      const outroGain = offlineCtx.createGain();
+      outroGain.gain.value = 1.0;
+      outroSrc.connect(outroGain).connect(masterLimiter);
+      outroSrc.start(voiceEndTime + outroGap);
+    }
+  } catch (e) {
+    console.warn("未能加载真实颂钵音效:", e);
+  }
 
   // ────────────────────────────────────────────
   // 3. 语音轨道 + De-esser + Haas 展宽 + 混响 + 暖色 EQ
