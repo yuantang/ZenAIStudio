@@ -314,11 +314,7 @@ const App: React.FC = () => {
   };
 
   const downloadAudio = (blob: Blob, name: string) => {
-    const ext = blob.type.includes("webm")
-      ? "webm"
-      : blob.type.includes("mp3")
-        ? "mp3"
-        : "wav";
+    const ext = blob.type.includes("mp3") ? "mp3" : "wav";
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -862,12 +858,8 @@ const App: React.FC = () => {
                 <div className="text-indigo-500 text-[10px] font-black tracking-widest uppercase mb-12 flex items-center justify-center gap-3">
                   <span className="w-8 h-px bg-indigo-100"></span>
                   {(result.audioBlob.size / 1024 / 1024).toFixed(1)} MB{" "}
-                  {result.audioBlob.type.includes("webm")
-                    ? "OPUS"
-                    : result.audioBlob.type.includes("mp3")
-                      ? "MP3"
-                      : "WAV"}{" "}
-                  • {selectedDuration} MIN SESSION
+                  {result.audioBlob.type.includes("mp3") ? "MP3" : "WAV"} •{" "}
+                  {selectedDuration} MIN SESSION
                   <span className="w-8 h-px bg-indigo-100"></span>
                 </div>
 

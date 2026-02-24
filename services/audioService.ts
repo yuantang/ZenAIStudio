@@ -1086,20 +1086,13 @@ export async function mixSingleVoiceAudio(
   // 4. 三段双耳节拍 + 等时节拍（Alpha → Theta → Delta 渐变）
   // ────────────────────────────────────────────
   console.log("[Mixing] 注入三段双耳节拍 + 等时节拍...");
-  onProgress?.('注入脑波引导', 45);
-  
-  const binauralTotalDuration = voiceBuffer.duration + outroGap + bowlOutroDuration;
+  // 注入双耳节拍 (Binaural Beats)
+  const binauralTotalDuration = totalDuration - bowlIntroDuration - bowlOutroDuration;
   const thirdPoint = binauralTotalDuration / 3;
-  
-  // 双耳节拍（需要耳机）
-  addBinauralBeats(offlineCtx, voiceStartTime, thirdPoint, 180, 10);
-  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 180, 6);
-  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 180, 4);
-  
-  // 等时节拍（无需耳机，互补引导）
-  addIsochronalTones(offlineCtx, voiceStartTime, thirdPoint, 400, 10);
-  addIsochronalTones(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 380, 6);
-  addIsochronalTones(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 360, 4);
+  // 仅使用更柔和的双耳节拍，不使用会产生“滴滴”声的等时节拍(Isochronal Tones)
+  addBinauralBeats(offlineCtx, voiceStartTime, thirdPoint, 100, 10);
+  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint, thirdPoint, 90, 6);
+  addBinauralBeats(offlineCtx, voiceStartTime + thirdPoint * 2, binauralTotalDuration - thirdPoint * 2, 80, 4);
 
   // ────────────────────────────────────────────
   // 5. 段落级声境纹理（根据每段 ambientHint 动态切换 + crossfade）
@@ -1347,19 +1340,9 @@ function normalizeLUFS(buffer: AudioBuffer, targetLUFS: number = -16): void {
  * 不支持时回退到 WAV
  */
 async function encodeAudio(buffer: AudioBuffer): Promise<Blob> {
-  // 检测浏览器是否支持 MediaRecorder + Opus
-  const opusMime = 'audio/webm;codecs=opus';
-  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(opusMime)) {
-    try {
-      console.log("[Encode] 使用 Opus/WebM 编码...");
-      return await encodeWithMediaRecorder(buffer, opusMime);
-    } catch (e) {
-      console.warn("[Encode] Opus 编码失败，回退 WAV:", e);
-    }
-  }
-  
-  // 回退到 WAV
-  console.log("[Encode] 使用 WAV 编码");
+  // 统一使用 WAV 格式以确保所有设备（特别是 iOS/Safari）均可直接播放，
+  // 避免 WebM/Opus 导致的兼容性问题。
+  console.log("[Encode] 使用高兼容性 WAV 编码...");
   return bufferToWav(buffer);
 }
 
