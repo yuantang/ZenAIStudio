@@ -416,19 +416,18 @@ const App: React.FC = () => {
       </div>
 
       <header className="text-center mb-16 md:mb-24 relative">
-        <button
-          onClick={() => setShowSettings(true)}
-          className="absolute top-0 right-0 p-3 rounded-full bg-white/80 shadow-sm border border-slate-100 text-slate-400 hover:text-indigo-500 hover:shadow-md transition-all"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-
-        <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/80 border border-slate-100 text-slate-500 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 shadow-sm">
+        <div className="absolute top-0 right-0 flex items-center gap-2">
+          <DarkModeToggle />
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-3 rounded-full bg-white/80 dark:bg-slate-800/80 shadow-sm border border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:shadow-md transition-all"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="inline-flex items-center px-4 py-2 rounded-full bg-white/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-[0.2em] uppercase mb-6 shadow-sm">
           <ShieldCheck className="w-3.5 h-3.5 mr-2 text-indigo-500" />{" "}
           Professional ZenAI Studio
-        </div>
-        <div className="absolute top-0 right-0">
-          <DarkModeToggle />
         </div>
         <h1 className="text-5xl md:text-7xl font-serif font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
           ZenAI Studio
