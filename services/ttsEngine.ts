@@ -5,7 +5,7 @@
 
 import { MeditationScript, TTSEngine } from '../types';
 import { synthesizeFullMeditation } from './geminiService';
-import { synthesizeWithCoqui } from './vibeVoiceService';
+import { synthesizeWithQwen } from './qwenTtsService';
 
 /**
  * 统一 TTS 合成接口
@@ -17,9 +17,9 @@ export async function synthesize(
   engine: TTSEngine = 'gemini'
 ): Promise<Uint8Array> {
   switch (engine) {
-    case 'coqui':
-      console.log('[TTS Engine] 使用 Coqui TTS (XTTS v2) 本地引擎');
-      return synthesizeWithCoqui(script, voiceName);
+    case 'qwen':
+      console.log('[TTS Engine] 使用 阿里云千问 (CosyVoice) 引擎');
+      return synthesizeWithQwen(script, voiceName);
     
     case 'gemini':
     default:

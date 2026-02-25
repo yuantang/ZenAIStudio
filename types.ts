@@ -1,5 +1,5 @@
 
-export type TTSEngine = 'gemini' | 'coqui';
+export type TTSEngine = 'gemini' | 'qwen';
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 export type MoodState = 'anxious' | 'sad' | 'restless' | 'tired' | 'neutral';
 export type MeditationStyle = 'mindfulness' | 'zen' | 'yoga-nidra' | 'compassion';

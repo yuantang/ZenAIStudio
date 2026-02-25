@@ -163,17 +163,21 @@ export const TTS_ENGINES = [
     badgeColor: 'text-indigo-600 bg-indigo-50',
   },
   {
-    id: 'coqui' as const,
-    name: '🐸 Coqui TTS',
-    description: '开源本地 · 零成本 · 中文支持',
-    icon: '🖥️',
-    badge: '免费',
-    badgeColor: 'text-emerald-600 bg-emerald-50',
+    id: 'qwen' as const,
+    name: '☁️ 阿里云千问',
+    description: '百炼语音模型 · 情感细腻',
+    icon: '☁️',
+    badge: '推荐',
+    badgeColor: 'text-blue-600 bg-blue-50',
   },
 ];
 
-export const COQUI_VOICES = [
-  { id: 'default', name: 'XTTS v2 默认声线', gender: 'neutral' },
+export const QWEN_VOICES = [
+  { id: 'sambert-zhichu-v1', name: '温柔知性 (知楚)', gender: 'female' },
+  { id: 'sambert-zhiwei-v1', name: '甜美亲切 (知薇)', gender: 'female' },
+  { id: 'sambert-zhiming-v1', name: '幽默男声 (知明)', gender: 'male' },
+  { id: 'sambert-zhimo-v1', name: '情感轻柔 (知茉)', gender: 'female' },
+  { id: 'sambert-zhiyuan-v1', name: '温暖女声 (知沅)', gender: 'female' }
 ];
 
 export const MEDITATION_PRESETS = [

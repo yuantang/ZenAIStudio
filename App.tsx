@@ -33,7 +33,7 @@ import {
 import {
   BACKGROUND_TRACKS,
   VOICES,
-  COQUI_VOICES,
+  QWEN_VOICES,
   TTS_ENGINES,
   MEDITATION_PRESETS,
   DURATION_OPTIONS,
@@ -43,7 +43,6 @@ import {
 } from "./constants";
 import { generateMeditationScript, getApiKey } from "./services/geminiService";
 import { synthesize } from "./services/ttsEngine";
-import { checkCoquiTTSStatus } from "./services/vibeVoiceService";
 import { decodePcm, mixSingleVoiceAudio } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
@@ -120,7 +119,6 @@ const App: React.FC = () => {
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
   const [selectedEngine, setSelectedEngine] = useState<TTSEngine>("gemini");
-  const [coquiOnline, setCoquiOnline] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(10);
   const [selectedExperience, setSelectedExperience] =
     useState<ExperienceLevel>("beginner");
@@ -644,9 +642,8 @@ const App: React.FC = () => {
                         onClick={() => {
                           setSelectedEngine(eng.id);
                           // 切换引擎时自动选第一个对应语音
-                          if (eng.id === "coqui") {
-                            setSelectedVoice(COQUI_VOICES[0].id);
-                            checkCoquiTTSStatus().then(setCoquiOnline);
+                          if (eng.id === "qwen") {
+                            setSelectedVoice(QWEN_VOICES[0].id);
                           } else {
                             setSelectedVoice(VOICES[0].id);
                           }
@@ -678,27 +675,11 @@ const App: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  {selectedEngine === "coqui" && (
-                    <div
-                      className={`flex items-center gap-2 text-[9px] font-bold mb-4 px-2 py-1.5 rounded-lg ${
-                        coquiOnline
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-red-50 text-red-500"
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${coquiOnline ? "bg-emerald-500" : "bg-red-400"}`}
-                      />
-                      {coquiOnline
-                        ? "🐸 Coqui TTS 服务已连接"
-                        : "本地服务未启动 (http://localhost:5002)"}
-                    </div>
-                  )}
                   <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
                     引导师 / Guide
                   </label>
                   <div className="space-y-2">
-                    {(selectedEngine === "coqui" ? COQUI_VOICES : VOICES).map(
+                    {(selectedEngine === "qwen" ? QWEN_VOICES : VOICES).map(
                       (v) => (
                         <button
                           key={v.id}
