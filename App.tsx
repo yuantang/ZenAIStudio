@@ -28,21 +28,22 @@ import {
   MeditationStyle,
   MeditationCourse,
   CourseDay,
+  TTSEngine,
 } from "./types";
 import {
   BACKGROUND_TRACKS,
   VOICES,
+  VIBEVOICE_VOICES,
+  TTS_ENGINES,
   MEDITATION_PRESETS,
   DURATION_OPTIONS,
   EXPERIENCE_OPTIONS,
   MOOD_OPTIONS,
   STYLE_OPTIONS,
 } from "./constants";
-import {
-  generateMeditationScript,
-  synthesizeFullMeditation,
-  getApiKey,
-} from "./services/geminiService";
+import { generateMeditationScript, getApiKey } from "./services/geminiService";
+import { synthesize } from "./services/ttsEngine";
+import { checkVibeVoiceStatus } from "./services/vibeVoiceService";
 import { decodePcm, mixSingleVoiceAudio } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
@@ -118,6 +119,8 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState("");
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
+  const [selectedEngine, setSelectedEngine] = useState<TTSEngine>("gemini");
+  const [vibeVoiceOnline, setVibeVoiceOnline] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(10);
   const [selectedExperience, setSelectedExperience] =
     useState<ExperienceLevel>("beginner");
@@ -258,7 +261,7 @@ const App: React.FC = () => {
     setStatus(GenerationStatus.VOICING);
     setProgress(30);
 
-    const rawPcm = await synthesizeFullMeditation(script, selectedVoice);
+    const rawPcm = await synthesize(script, selectedVoice, selectedEngine);
     setProgress(75);
 
     const ctx = new (
@@ -632,10 +635,73 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <section>
                   <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
+                    语音引擎 / Engine
+                  </label>
+                  <div className="space-y-2 mb-6">
+                    {TTS_ENGINES.map((eng) => (
+                      <button
+                        key={eng.id}
+                        onClick={() => {
+                          setSelectedEngine(eng.id);
+                          // 切换引擎时自动选第一个对应语音
+                          if (eng.id === "vibevoice") {
+                            setSelectedVoice(VIBEVOICE_VOICES[0].id);
+                            checkVibeVoiceStatus().then(setVibeVoiceOnline);
+                          } else {
+                            setSelectedVoice(VOICES[0].id);
+                          }
+                        }}
+                        className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
+                          selectedEngine === eng.id
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                            : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
+                        }`}
+                      >
+                        <span className="text-base mr-2">{eng.icon}</span>
+                        <div className="text-left flex-1">
+                          <div className="text-xs font-bold">{eng.name}</div>
+                          <div
+                            className={`text-[8px] ${selectedEngine === eng.id ? "text-indigo-200" : "text-slate-400"}`}
+                          >
+                            {eng.description}
+                          </div>
+                        </div>
+                        <span
+                          className={`text-[7px] font-black px-1.5 py-0.5 rounded-full ${
+                            selectedEngine === eng.id
+                              ? "bg-white/20 text-white"
+                              : eng.badgeColor
+                          }`}
+                        >
+                          {eng.badge}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedEngine === "vibevoice" && (
+                    <div
+                      className={`flex items-center gap-2 text-[9px] font-bold mb-4 px-2 py-1.5 rounded-lg ${
+                        vibeVoiceOnline
+                          ? "bg-emerald-50 text-emerald-600"
+                          : "bg-red-50 text-red-500"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${vibeVoiceOnline ? "bg-emerald-500" : "bg-red-400"}`}
+                      />
+                      {vibeVoiceOnline
+                        ? "本地服务已连接"
+                        : "本地服务未启动 (ws://localhost:8765)"}
+                    </div>
+                  )}
+                  <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
                     引导师 / Guide
                   </label>
                   <div className="space-y-2">
-                    {VOICES.map((v) => (
+                    {(selectedEngine === "vibevoice"
+                      ? VIBEVOICE_VOICES
+                      : VOICES
+                    ).map((v) => (
                       <button
                         key={v.id}
                         onClick={() => setSelectedVoice(v.id)}
