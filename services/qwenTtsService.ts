@@ -1,6 +1,6 @@
 import { MeditationScript } from '../types';
 
-const QWEN_TTS_API_URL = 'https://dashscope.aliyuncs.com/api/v1/services/audio/text-to-speech/text-to-speech';
+const QWEN_TTS_API_URL = '/api/dashscope/api/v1/services/audio/text-to-speech/text-to-speech';
 
 /**
  * 提取 WAV 文件的 PCM Int16 数据
