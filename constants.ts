@@ -163,19 +163,17 @@ export const TTS_ENGINES = [
     badgeColor: 'text-indigo-600 bg-indigo-50',
   },
   {
-    id: 'vibevoice' as const,
-    name: 'VibeVoice 本地',
-    description: '微软开源 · 零成本',
+    id: 'coqui' as const,
+    name: '🐸 Coqui TTS',
+    description: '开源本地 · 零成本 · 中文支持',
     icon: '🖥️',
     badge: '免费',
     badgeColor: 'text-emerald-600 bg-emerald-50',
   },
 ];
 
-export const VIBEVOICE_VOICES = [
-  { id: 'Carter', name: '沉稳男声 (Carter)', gender: 'male' },
-  { id: 'Nova', name: '温暖女声 (Nova)', gender: 'female' },
-  { id: 'Echo', name: '清晰中性 (Echo)', gender: 'neutral' },
+export const COQUI_VOICES = [
+  { id: 'default', name: 'XTTS v2 默认声线', gender: 'neutral' },
 ];
 
 export const MEDITATION_PRESETS = [

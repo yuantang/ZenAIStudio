@@ -1,11 +1,11 @@
 /**
  * TTS 引擎抽象工厂
- * 统一 Gemini 和 VibeVoice 的合成接口
+ * 统一 Gemini 和 Coqui TTS 的合成接口
  */
 
 import { MeditationScript, TTSEngine } from '../types';
 import { synthesizeFullMeditation } from './geminiService';
-import { synthesizeWithVibeVoice } from './vibeVoiceService';
+import { synthesizeWithCoqui } from './vibeVoiceService';
 
 /**
  * 统一 TTS 合成接口
@@ -17,9 +17,9 @@ export async function synthesize(
   engine: TTSEngine = 'gemini'
 ): Promise<Uint8Array> {
   switch (engine) {
-    case 'vibevoice':
-      console.log('[TTS Engine] 使用 VibeVoice-Realtime 本地引擎');
-      return synthesizeWithVibeVoice(script, voiceName);
+    case 'coqui':
+      console.log('[TTS Engine] 使用 Coqui TTS (XTTS v2) 本地引擎');
+      return synthesizeWithCoqui(script, voiceName);
     
     case 'gemini':
     default:

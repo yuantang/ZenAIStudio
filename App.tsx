@@ -33,7 +33,7 @@ import {
 import {
   BACKGROUND_TRACKS,
   VOICES,
-  VIBEVOICE_VOICES,
+  COQUI_VOICES,
   TTS_ENGINES,
   MEDITATION_PRESETS,
   DURATION_OPTIONS,
@@ -43,7 +43,7 @@ import {
 } from "./constants";
 import { generateMeditationScript, getApiKey } from "./services/geminiService";
 import { synthesize } from "./services/ttsEngine";
-import { checkVibeVoiceStatus } from "./services/vibeVoiceService";
+import { checkCoquiTTSStatus } from "./services/vibeVoiceService";
 import { decodePcm, mixSingleVoiceAudio } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
@@ -120,7 +120,7 @@ const App: React.FC = () => {
   const [selectedBG, setSelectedBG] = useState(BACKGROUND_TRACKS[0].id);
   const [selectedVoice, setSelectedVoice] = useState("Zephyr");
   const [selectedEngine, setSelectedEngine] = useState<TTSEngine>("gemini");
-  const [vibeVoiceOnline, setVibeVoiceOnline] = useState(false);
+  const [coquiOnline, setCoquiOnline] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(10);
   const [selectedExperience, setSelectedExperience] =
     useState<ExperienceLevel>("beginner");
@@ -644,9 +644,9 @@ const App: React.FC = () => {
                         onClick={() => {
                           setSelectedEngine(eng.id);
                           // 切换引擎时自动选第一个对应语音
-                          if (eng.id === "vibevoice") {
-                            setSelectedVoice(VIBEVOICE_VOICES[0].id);
-                            checkVibeVoiceStatus().then(setVibeVoiceOnline);
+                          if (eng.id === "coqui") {
+                            setSelectedVoice(COQUI_VOICES[0].id);
+                            checkCoquiTTSStatus().then(setCoquiOnline);
                           } else {
                             setSelectedVoice(VOICES[0].id);
                           }
@@ -678,47 +678,46 @@ const App: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  {selectedEngine === "vibevoice" && (
+                  {selectedEngine === "coqui" && (
                     <div
                       className={`flex items-center gap-2 text-[9px] font-bold mb-4 px-2 py-1.5 rounded-lg ${
-                        vibeVoiceOnline
+                        coquiOnline
                           ? "bg-emerald-50 text-emerald-600"
                           : "bg-red-50 text-red-500"
                       }`}
                     >
                       <span
-                        className={`w-1.5 h-1.5 rounded-full ${vibeVoiceOnline ? "bg-emerald-500" : "bg-red-400"}`}
+                        className={`w-1.5 h-1.5 rounded-full ${coquiOnline ? "bg-emerald-500" : "bg-red-400"}`}
                       />
-                      {vibeVoiceOnline
-                        ? "本地服务已连接"
-                        : "本地服务未启动 (ws://localhost:8765)"}
+                      {coquiOnline
+                        ? "🐸 Coqui TTS 服务已连接"
+                        : "本地服务未启动 (http://localhost:5002)"}
                     </div>
                   )}
                   <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
                     引导师 / Guide
                   </label>
                   <div className="space-y-2">
-                    {(selectedEngine === "vibevoice"
-                      ? VIBEVOICE_VOICES
-                      : VOICES
-                    ).map((v) => (
-                      <button
-                        key={v.id}
-                        onClick={() => setSelectedVoice(v.id)}
-                        className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
-                          selectedVoice === v.id
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                            : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
-                        }`}
-                      >
-                        <div className="text-left flex-1 pl-2">
-                          <div className="text-xs font-bold">{v.name}</div>
-                        </div>
-                        {selectedVoice === v.id && (
-                          <Zap className="w-3 h-3 fill-current text-indigo-300" />
-                        )}
-                      </button>
-                    ))}
+                    {(selectedEngine === "coqui" ? COQUI_VOICES : VOICES).map(
+                      (v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => setSelectedVoice(v.id)}
+                          className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
+                            selectedVoice === v.id
+                              ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                              : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
+                          }`}
+                        >
+                          <div className="text-left flex-1 pl-2">
+                            <div className="text-xs font-bold">{v.name}</div>
+                          </div>
+                          {selectedVoice === v.id && (
+                            <Zap className="w-3 h-3 fill-current text-indigo-300" />
+                          )}
+                        </button>
+                      ),
+                    )}
                   </div>
                 </section>
 
