@@ -404,7 +404,10 @@ export const CourseCatalog: React.FC<CourseCatalogProps> = ({
                             <div className="text-xs font-bold text-slate-700">
                               Day {day.day} · {day.title}
                             </div>
-                            <div className="text-[9px] text-slate-400">
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                              {day.theme}
+                            </p>
+                            <div className="text-[9px] text-slate-400 mt-0.5">
                               {day.focus} · {day.durationMinutes}分钟
                             </div>
                           </div>
