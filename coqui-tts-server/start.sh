@@ -20,8 +20,4 @@ echo "   模型: XTTS v2 (多语言，含中文)"
 echo "   地址: http://localhost:5002"
 echo ""
 
-# 使用 XTTS v2 多语言模型启动 HTTP 服务
-tts-server \
-    --model_name tts_models/multilingual/multi-dataset/xtts_v2 \
-    --port 5002 \
-    "$@"
+python3 "$SCRIPT_DIR/server.py"

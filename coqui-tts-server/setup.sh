@@ -12,35 +12,44 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 echo "🐸 Coqui TTS 安装脚本"
 echo "========================================"
 
-# 1. 检查 Python 版本
+# 1. 查找可用的高版本 Python（优先 3.11）
 echo ""
 echo "📦 [1/3] 检查 Python 环境..."
-if ! command -v python3 &> /dev/null; then
+
+PYTHON_BIN=""
+for py in python3.11 python3.12 python3.10 python3.9 python3; do
+    if command -v "$py" &> /dev/null; then
+        PYTHON_BIN=$(command -v "$py")
+        break
+    fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
     echo "❌ 未找到 python3，请先安装 Python 3.9+"
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-PYTHON_MAJOR=$(python3 -c "import sys; print(sys.version_info.major)")
-PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
-echo "   Python 版本: $PYTHON_VERSION"
+PYTHON_VERSION=$($PYTHON_BIN -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_MINOR=$($PYTHON_BIN -c "import sys; print(sys.version_info.minor)")
+echo "   使用 Python: $PYTHON_BIN ($PYTHON_VERSION)"
 
-if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 9 ]; }; then
-    echo "❌ Coqui TTS 需要 Python >= 3.9，当前版本 $PYTHON_VERSION"
-    echo "   请安装 Python 3.9+ 后重试: brew install python@3.11"
+if [ "$PYTHON_MINOR" -lt 9 ]; then
+    echo "❌ Coqui TTS 需要 Python >= 3.9，找到的最高版本为 $PYTHON_VERSION"
+    echo "   请安装: brew install python@3.11"
     exit 1
 fi
 
 # 2. 创建虚拟环境 + 安装 TTS
 echo ""
-echo "🐍 [2/3] 创建虚拟环境并安装 Coqui TTS..."
+echo "🐍 [2/3] 创建虚拟环境..."
 if [ -d "$VENV_DIR" ]; then
     echo "   虚拟环境已存在，跳过创建"
 else
-    python3 -m venv "$VENV_DIR"
+    $PYTHON_BIN -m venv "$VENV_DIR"
 fi
 source "$VENV_DIR/bin/activate"
 
+echo "   安装 Coqui TTS（约需 2-5 分钟）..."
 pip install --upgrade pip
 pip install TTS
 
@@ -64,5 +73,4 @@ echo ""
 echo "支持的功能："
 echo "  - XTTS v2 多语言（含中文）"
 echo "  - HTTP API: http://localhost:5002"
-echo "  - 1100+ 语言 (Fairseq VITS)"
 echo "============================================"
