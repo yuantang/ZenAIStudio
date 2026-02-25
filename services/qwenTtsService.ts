@@ -1,20 +1,8 @@
 import { MeditationScript } from '../types';
 
-const QWEN_TTS_API_URL = '/api/dashscope/api/v1/services/audio/text-to-speech/text-to-speech';
-
 /**
- * 提取 WAV 文件的 PCM Int16 数据
- */
-function extractPcmFromWav(wavBuffer: ArrayBuffer): Uint8Array {
-  // 阿里云直接返回标准 WAV 或 MP3，这里请求了 format: "wav"
-  const view = new DataView(wavBuffer);
-  // WAV header 固定 44 字节
-  const dataOffset = 44;
-  return new Uint8Array(wavBuffer, dataOffset);
-}
-
-/**
- * 阿里云百炼 (千问/CosyVoice) TTS 服务单段合成
+ * 阿里云百炼 (千问/CosyVoice) TTS 服务单段合成 (基于 WebSocket 双工流式协议)
+ * 使用纯净的 PCM 数据流合并，省去 WAV 解码步骤
  */
 export const synthesizeQwenVoiceSync = async (
   text: string,
@@ -25,40 +13,80 @@ export const synthesizeQwenVoiceSync = async (
     throw new Error('未配置阿里云 DashScope API Key (VITE_DASHSCOPE_API_KEY)');
   }
 
-  const payload = {
-    model: voiceId,
-    input: {
-      text: text,
-    },
-    parameters: {
-      text_type: "PlainText",
-      voice: voiceId,
-      format: "wav",
-      sample_rate: 24000
-    }
-  };
+  return new Promise((resolve, reject) => {
+    // 强制每次生成新的请求 task_id（使用简单随机 Hex 字符串）
+    const taskId = Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2);
+    
+    // 使用 ws 连接，将 apiKey 放入 Query 请求，规避浏览器直接修改 Header 的同源跨域安全策略限制
+    const ws = new WebSocket(`wss://dashscope.aliyuncs.com/api-ws/v1/inference?api_key=${apiKey}`);
+    ws.binaryType = 'arraybuffer';
+    
+    // 累加所有收到的二进制 pcm chunk
+    const pcmChunks: Uint8Array[] = [];
+    
+    ws.onopen = () => {
+      // 握手成功后即可发送推理请求
+      const runReq = {
+        header: {
+          action: 'run-task',
+          task_id: taskId,
+          streaming: 'duplex'
+        },
+        payload: {
+          // 强制恢复调用顶级大模型 CosyVoice v1
+          model: 'cosyvoice-v1', 
+          task_group: 'audio',
+          task: 'tts',
+          function: 'SpeechSynthesizer',
+          input: { text: text },
+          parameters: {
+            voice: voiceId,
+            text_type: 'PlainText',
+            sample_rate: 24000,
+            // 指示返回 PCM 无头数据
+            format: 'pcm'
+          }
+        }
+      };
+      ws.send(JSON.stringify(runReq));
+    };
 
-  const response = await fetch(QWEN_TTS_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
+    ws.onmessage = (event) => {
+      // 如果接收到的是字符串信号帧
+      if (typeof event.data === 'string') {
+        const msg = JSON.parse(event.data);
+        if (msg.header?.event === 'task-finished') {
+          // 合成完成信号，安全断开 ws
+          ws.close();
+          // 全部收到后合并
+          const totalLen = pcmChunks.reduce((sum, c) => sum + c.length, 0);
+          const merged = new Uint8Array(totalLen);
+          let offset = 0;
+          for (const chunk of pcmChunks) {
+            merged.set(chunk, offset);
+            offset += chunk.length;
+          }
+          resolve(merged.buffer);
+        } else if (msg.header?.event === 'task-failed') {
+          ws.close();
+          reject(new Error(`阿里云 CosyVoice 失败: ${msg.header.error_message}`));
+        }
+      } 
+      // 否则为极速推流回来的二进制语音片段
+      else if (event.data instanceof ArrayBuffer) {
+        pcmChunks.push(new Uint8Array(event.data));
+      } else if (event.data instanceof Blob) {
+        // Blob 降级兼容
+        event.data.arrayBuffer().then((ab) => {
+          pcmChunks.push(new Uint8Array(ab));
+        });
+      }
+    };
+
+    ws.onerror = (e) => {
+      reject(new Error('CosyVoice WebSocket 服务未连接，请重试'));
+    };
   });
-
-  if (!response.ok) {
-    let errorMsg = response.statusText;
-    try {
-      const errorJson = await response.json();
-      errorMsg = errorJson.message || errorJson.code || errorMsg;
-    } catch (e) {
-      errorMsg = await response.text();
-    }
-    throw new Error(`千问 TTS 请求失败 (${response.status}): ${errorMsg}`);
-  }
-
-  return await response.arrayBuffer();
 };
 
 /**
@@ -67,9 +95,9 @@ export const synthesizeQwenVoiceSync = async (
  */
 export async function synthesizeWithQwen(
   script: MeditationScript,
-  voiceName: string = 'sambert-zhichu-v1'
+  voiceName: string = 'longxiaochun'
 ): Promise<Uint8Array> {
-  console.log(`[Qwen TTS] 开始合成，使用千问音色: ${voiceName}`);
+  console.log(`[Qwen TTS] 开始合成，使用 CosyVoice 极品音色: ${voiceName}`);
 
   const apiKey = (import.meta as any).env.VITE_DASHSCOPE_API_KEY;
   if (!apiKey) {
@@ -86,11 +114,11 @@ export async function synthesizeWithQwen(
 
   for (let i = 0; i < sectionTexts.length; i++) {
     const text = sectionTexts[i];
-    console.log(`[Qwen TTS] 合成段落 ${i + 1}/${sectionTexts.length} (${text.length} 字)`);
+    console.log(`[Qwen TTS] CosyVoice 并发推流中 -> 段落 ${i + 1}/${sectionTexts.length} (${text.length} 字)`);
 
-    const wavData = await synthesizeQwenVoiceSync(text, voiceName, apiKey);
-    const pcm = extractPcmFromWav(wavData);
-    audioChunks.push(pcm);
+    // 直接通过 WebSocket 返回 PCM
+    const pcmData = await synthesizeQwenVoiceSync(text, voiceName, apiKey);
+    audioChunks.push(new Uint8Array(pcmData));
 
     // 段落间无声间隔
     const pause = script.sections[i]?.pauseSeconds || 0;
@@ -109,7 +137,8 @@ export async function synthesizeWithQwen(
     offset += chunk.length;
   }
 
-  console.log(`[Qwen TTS] 合成完成，总字节: ${merged.length}，时长: ${(merged.length / BYTES_PER_SAMPLE / SAMPLE_RATE).toFixed(1)}s`);
+  console.log(`[Qwen TTS] 合成完结! 总字节: ${merged.length}，全长: ${(merged.length / BYTES_PER_SAMPLE / SAMPLE_RATE).toFixed(1)}s`);
 
   return merged;
 }
+

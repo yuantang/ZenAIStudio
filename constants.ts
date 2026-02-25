@@ -173,11 +173,11 @@ export const TTS_ENGINES = [
 ];
 
 export const QWEN_VOICES = [
-  { id: 'sambert-zhichu-v1', name: '温柔知性 (知楚)', gender: 'female' },
-  { id: 'sambert-zhiwei-v1', name: '甜美亲切 (知薇)', gender: 'female' },
-  { id: 'sambert-zhiming-v1', name: '幽默男声 (知明)', gender: 'male' },
-  { id: 'sambert-zhimo-v1', name: '情感轻柔 (知茉)', gender: 'female' },
-  { id: 'sambert-zhiyuan-v1', name: '温暖女声 (知沅)', gender: 'female' }
+  { id: 'longxiaochun', name: '温柔亲切 (龙小淳)', gender: 'female' },
+  { id: 'longwan', name: '知性从容 (龙婉)', gender: 'female' },
+  { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male' },
+  { id: 'longmiao', name: '治愈童声 (龙小喵)', gender: 'neutral' },
+  { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male' }
 ];
 
 export const MEDITATION_PRESETS = [
