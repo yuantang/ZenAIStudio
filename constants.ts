@@ -175,6 +175,7 @@ export const TTS_ENGINES = [
 export const QWEN_VOICES = [
   { id: 'longxiaochun', name: '温柔亲切 (龙小淳)', gender: 'female' },
   { id: 'longwan', name: '知性从容 (龙婉)', gender: 'female' },
+  { id: 'seren', name: '晚安好梦 (小婉)', gender: 'female' },
   { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male' },
   { id: 'longmiao', name: '治愈童声 (龙小喵)', gender: 'neutral' },
   { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male' }
