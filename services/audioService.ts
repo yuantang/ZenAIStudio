@@ -1,42 +1,4 @@
-
-/**
- * Lanczos-3 内核：sinc(x) * sinc(x/a)，窗口大小 a=3
- * 比线性插值质量高很多，接近专业重采样器
- */
-function lanczos3(x: number): number {
-  if (x === 0) return 1;
-  if (Math.abs(x) >= 3) return 0;
-  const px = Math.PI * x;
-  return (Math.sin(px) / px) * (Math.sin(px / 3) / (px / 3));
-}
-
-/**
- * 高质量重采样：使用 Lanczos-3 插值将音频从 srcRate 转换到 dstRate
- */
-function resampleLanczos(srcData: Float32Array, srcRate: number, dstRate: number): Float32Array {
-  if (srcRate === dstRate) return srcData;
-  
-  const ratio = srcRate / dstRate;
-  const dstLength = Math.ceil(srcData.length / ratio);
-  const result = new Float32Array(dstLength);
-  const a = 3; // Lanczos 核窗口
-  
-  for (let i = 0; i < dstLength; i++) {
-    const srcPos = i * ratio;
-    const srcIndex = Math.floor(srcPos);
-    let sample = 0;
-    
-    for (let j = srcIndex - a + 1; j <= srcIndex + a; j++) {
-      if (j >= 0 && j < srcData.length) {
-        sample += srcData[j] * lanczos3(srcPos - j);
-      }
-    }
-    
-    result[i] = sample;
-  }
-  
-  return result;
-}
+// 移除废弃的手工 resampleLanczos，交由 AudioBuffer 原生接管重采样
 
 export async function decodePcm(
   data: Uint8Array,
@@ -65,19 +27,10 @@ export async function decodePcm(
     rawSamples[i] = dataInt16[i] / 32768.0;
   }
 
-  // 如果上下文采样率与源不同，执行 Lanczos-3 高质量重采样
-  const targetRate = ctx.sampleRate;
-  let finalSamples: Float32Array;
-  
-  if (Math.abs(targetRate - sampleRate) > 1) {
-    console.log(`[PCM] Lanczos-3 重采样: ${sampleRate}Hz → ${targetRate}Hz`);
-    finalSamples = resampleLanczos(rawSamples, sampleRate, targetRate);
-  } else {
-    finalSamples = rawSamples;
-  }
-  
-  const buffer = ctx.createBuffer(1, finalSamples.length, targetRate);
-  buffer.getChannelData(0).set(finalSamples);
+  // 直接创建原采样率的 AudioBuffer（如果和环境 targetRate 不同，
+  // Web Audio Context 的底层 C++ 引擎在被串联时会自动高质量重采样，绝不可注入手工容易飘出 NaN 的 JS 浮点处理）
+  const buffer = ctx.createBuffer(1, rawSamples.length, sampleRate);
+  buffer.getChannelData(0).set(rawSamples);
   return buffer;
 }
 
