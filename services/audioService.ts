@@ -111,14 +111,19 @@ export async function mixMeditationAudio(
     bgSource.start(0);
   }
 
-  timeline.forEach(item => {
+  timeline.forEach((item, index) => {
     const vSource = offlineCtx.createBufferSource();
     vSource.buffer = item.buffer;
     const vGain = offlineCtx.createGain();
     
+    // 是否为最后一个段落
+    const isLast = index === timeline.length - 1;
+    // 最后一段用更长的淡出（1.5s），中间段落用 0.5s
+    const fadeOut = isLast ? 1.5 : 0.5;
+    
     vGain.gain.setValueAtTime(0, item.start);
     vGain.gain.linearRampToValueAtTime(VOICE_GAIN, item.start + 0.2);
-    vGain.gain.setValueAtTime(VOICE_GAIN, item.start + item.duration - 0.2);
+    vGain.gain.setValueAtTime(VOICE_GAIN, item.start + item.duration - fadeOut);
     vGain.gain.linearRampToValueAtTime(0, item.start + item.duration);
 
     vSource.connect(vGain);
