@@ -26,7 +26,7 @@ export const AudioProgressBar: React.FC<AudioProgressBarProps> = ({
 
   // 格式化时间
   const formatTime = (seconds: number): string => {
-    if (!isFinite(seconds) || seconds < 0) return "00:00";
+    if (!isFinite(seconds) || isNaN(seconds) || seconds < 0) return "00:00";
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
@@ -141,11 +141,23 @@ export const AudioProgressBar: React.FC<AudioProgressBarProps> = ({
     setHoverX(e.clientX - rect.left);
   }, []);
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
+  const progressPercent =
+    duration > 0 && !isNaN(duration)
+      ? Math.min(100, (currentTime / duration) * 100)
+      : 0;
+  const bufferedPercent =
+    duration > 0 && !isNaN(duration)
+      ? Math.min(100, (buffered / duration) * 100)
+      : 0;
   const hoverPercent =
     hoverX !== null && barRef.current
-      ? (hoverX / barRef.current.getBoundingClientRect().width) * 100
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (hoverX / barRef.current.getBoundingClientRect().width) * 100,
+          ),
+        )
       : null;
   const hoverTime =
     hoverPercent !== null ? (hoverPercent / 100) * duration : null;

@@ -43,7 +43,9 @@ export const synthesizeQwenVoiceSync = async (
             voice: voiceId,
             text_type: 'PlainText',
             sample_rate: 24000,
-            format: 'pcm'
+            format: 'pcm',
+            // 降低到 0.85 甚至更低，增强冥想时引导声音舒缓、平静的疗愈感
+            rate: 0.85
           }
         }
       };

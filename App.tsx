@@ -319,14 +319,29 @@ const App: React.FC = () => {
 
   const togglePlay = () => {
     if (audioRef.current) {
-      if (isPlaying) audioRef.current.pause();
-      else {
-        audioRef.current.play().catch((e) => {
-          console.error("Audio playback failed:", e);
-          alert("音频播放失败：" + e.message + "，请尝试刷新重发。");
-        });
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((e) => {
+              console.error("Audio playback failed:", e);
+              setIsPlaying(false);
+              alert(
+                "音频组件未能解析文件或被浏览器拦截：" +
+                  e.message +
+                  "，请尝试刷新重试。",
+              );
+            });
+        } else {
+          setIsPlaying(true);
+        }
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -975,6 +990,8 @@ const App: React.FC = () => {
           ref={audioRef}
           src={audioUrl || ""}
           preload="auto"
+          controls
+          className="fixed bottom-0 left-0 w-full z-50 opacity-90 backdrop-blur-md bg-white/50 dark:bg-black/50"
           onError={(e) => {
             console.error("Audio Element Error:", e.currentTarget.error);
             alert(
@@ -991,7 +1008,6 @@ const App: React.FC = () => {
               markCourseDay(currentCourse.courseId, currentCourse.dayNum);
             }
           }}
-          className="hidden"
         />
       )}
 
