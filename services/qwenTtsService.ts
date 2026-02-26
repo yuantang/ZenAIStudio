@@ -25,30 +25,57 @@ export const synthesizeQwenVoiceSync = async (
     const pcmChunks: Uint8Array[] = [];
     
     ws.onopen = () => {
-      // 握手成功后即可发送推理请求
+      // 1. 握手成功后发送推理参数配置
       const runReq = {
         header: {
           action: 'run-task',
           task_id: taskId,
+          // duplex 原生双工流式收发
           streaming: 'duplex'
         },
         payload: {
-          // 强制恢复调用顶级大模型 CosyVoice v1
           model: 'cosyvoice-v1', 
           task_group: 'audio',
           task: 'tts',
           function: 'SpeechSynthesizer',
-          input: { text: text },
+          input: {},
           parameters: {
             voice: voiceId,
             text_type: 'PlainText',
             sample_rate: 24000,
-            // 指示返回 PCM 无头数据
             format: 'pcm'
           }
         }
       };
       ws.send(JSON.stringify(runReq));
+      
+      // 2. 发送实际待合成的文本内容
+      const continueReq = {
+        header: {
+          action: 'continue-task',
+          task_id: taskId,
+          streaming: 'duplex'
+        },
+        payload: {
+          input: {
+            text: text
+          }
+        }
+      };
+      ws.send(JSON.stringify(continueReq));
+
+      // 3. 标记输入结束，触发云端合成闭环
+      const finishReq = {
+        header: {
+          action: 'finish-task',
+          task_id: taskId,
+          streaming: 'duplex'
+        },
+        payload: {
+          input: {}
+        }
+      };
+      ws.send(JSON.stringify(finishReq));
     };
 
     ws.onmessage = (event) => {
