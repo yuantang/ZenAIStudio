@@ -377,7 +377,7 @@ function addBinauralBeats(
   baseFreq: number = 200,    // 载波频率（听不太到，越低越好）
   beatFreq: number = 8       // 差频 = 目标脑波频率 (Alpha: 8-12Hz, Theta: 4-8Hz)
 ): void {
-  const gainValue = 0.025; // 极低音量，仅潜意识感知
+  const gainValue = 0.008; // 极低音量，仅潜意识层面微弱感知
 
   // 左耳
   const oscL = ctx.createOscillator();
@@ -422,7 +422,7 @@ function addIsochronalTones(
   baseFreq: number = 400,    // 载波频率（比双耳节拍高，更易感知）
   pulseRate: number = 8      // 脉冲频率 = 目标脑波频率
 ): void {
-  const gainValue = 0.015; // 极低音量
+  const gainValue = 0.005; // 极低音量
 
   const osc = ctx.createOscillator();
   osc.frequency.value = baseFreq;

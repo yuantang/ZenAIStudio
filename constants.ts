@@ -163,22 +163,40 @@ export const TTS_ENGINES = [
     badgeColor: 'text-indigo-600 bg-indigo-50',
   },
   {
-    id: 'qwen' as const,
-    name: '☁️ 阿里云千问',
-    description: '百炼语音模型 · 情感细腻',
-    icon: '☁️',
+    id: 'cosyvoice-v1' as const,
+    name: '☁️ 阿里云千问 (CosyVoice)',
+    description: '基础模型 · 高性价比',
+    icon: '🎙️',
     badge: '推荐',
     badgeColor: 'text-blue-600 bg-blue-50',
   },
+  {
+    id: 'qwen3-tts' as const,
+    name: '☁️ 阿里云千问 (Qwen3)',
+    description: '极速旗舰 · 强表现力',
+    icon: '⚡',
+    badge: '旗舰级',
+    badgeColor: 'text-orange-600 bg-orange-50',
+  }
 ];
 
 export const QWEN_VOICES = [
-  { id: 'longxiaochun', name: '温柔亲切 (龙小淳)', gender: 'female' },
-  { id: 'longwan', name: '知性从容 (龙婉)', gender: 'female' },
-  { id: 'seren', name: '晚安好梦 (小婉)', gender: 'female' },
-  { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male' },
-  { id: 'longmiao', name: '治愈童声 (龙小喵)', gender: 'neutral' },
-  { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male' }
+  // —— CosyVoice v1 音色系列 ——
+  { id: 'longxiaochun', name: '温柔亲切 (龙小淳)', gender: 'female', model: 'cosyvoice-v1' },
+  { id: 'longwan', name: '知性从容 (龙婉)', gender: 'female', model: 'cosyvoice-v1' },
+  { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male', model: 'cosyvoice-v1' },
+  { id: 'longmiao', name: '治愈童声 (龙小喵)', gender: 'neutral', model: 'cosyvoice-v1' },
+  { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male', model: 'cosyvoice-v1' },
+  
+  // —— Qwen3-TTS Instruct-Flash-Realtime 官方音色 ——
+  // 参考: https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
+  { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Cherry', name: '阳光积极 (芊悦)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Kai', name: '耳朵 SPA (凯)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Chelsie', name: '二次元女友 (千雪)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
 ];
 
 export const MEDITATION_PRESETS = [

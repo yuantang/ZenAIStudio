@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 interface AudioProgressBarProps {
   audioRef: React.RefObject<HTMLAudioElement | null>;
   isPlaying: boolean;
+  /** 当音频源变化时传入新值，触发重新绑定监听器 */
+  audioSrc?: string;
 }
 
 /**
@@ -15,6 +17,7 @@ interface AudioProgressBarProps {
 export const AudioProgressBar: React.FC<AudioProgressBarProps> = ({
   audioRef,
   isPlaying,
+  audioSrc,
 }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -71,7 +74,7 @@ export const AudioProgressBar: React.FC<AudioProgressBarProps> = ({
       audio.removeEventListener("progress", onProgress);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
     };
-  }, [audioRef, isDragging]);
+  }, [audioRef, isDragging, audioSrc]);
 
   // 计算鼠标在进度条上的比例
   const getProgressFromEvent = useCallback(

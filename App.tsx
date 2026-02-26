@@ -83,8 +83,10 @@ const loadHistoryFromStorage = (): MeditationResult[] => {
 
 const saveHistoryToStorage = async (history: MeditationResult[]) => {
   try {
+    // 限制只保存最近的 3 条记录，由于 base64 体积巨大，存多必爆 Quota
+    const recentHistory = history.slice(0, 3);
     const historyToSave = await Promise.all(
-      history.map(async (item) => {
+      recentHistory.map(async (item) => {
         const { audioBlob, ...rest } = item;
         const audioBase64 = audioBlob ? await blobToBase64(audioBlob) : null;
         return { ...rest, audioBase64 };
@@ -162,9 +164,19 @@ const App: React.FC = () => {
     if (result) {
       const url = URL.createObjectURL(result.audioBlob);
       setAudioUrl(url);
+
+      // 强制原生 audio 标签重载新资源，打破状态死锁
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.load();
+          setIsPlaying(false);
+        }
+      }, 50);
+
       return () => URL.revokeObjectURL(url);
     } else {
       setAudioUrl("");
+      setIsPlaying(false);
     }
   }, [result]);
 
@@ -657,8 +669,20 @@ const App: React.FC = () => {
                         onClick={() => {
                           setSelectedEngine(eng.id);
                           // 切换引擎时自动选第一个对应语音
-                          if (eng.id === "qwen") {
-                            setSelectedVoice(QWEN_VOICES[0].id);
+                          if (eng.id === "cosyvoice-v1") {
+                            setSelectedVoice(
+                              QWEN_VOICES.filter(
+                                (v) => v.model === "cosyvoice-v1",
+                              )[0].id,
+                            );
+                          } else if (eng.id === "qwen3-tts") {
+                            setSelectedVoice(
+                              QWEN_VOICES.filter(
+                                (v) =>
+                                  v.model ===
+                                  "qwen3-tts-instruct-flash-realtime",
+                              )[0].id,
+                            );
                           } else {
                             setSelectedVoice(VOICES[0].id);
                           }
@@ -694,26 +718,32 @@ const App: React.FC = () => {
                     引导师 / Guide
                   </label>
                   <div className="space-y-2">
-                    {(selectedEngine === "qwen" ? QWEN_VOICES : VOICES).map(
-                      (v) => (
-                        <button
-                          key={v.id}
-                          onClick={() => setSelectedVoice(v.id)}
-                          className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
-                            selectedVoice === v.id
-                              ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                              : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
-                          }`}
-                        >
-                          <div className="text-left flex-1 pl-2">
-                            <div className="text-xs font-bold">{v.name}</div>
-                          </div>
-                          {selectedVoice === v.id && (
-                            <Zap className="w-3 h-3 fill-current text-indigo-300" />
-                          )}
-                        </button>
-                      ),
-                    )}
+                    {(selectedEngine === "cosyvoice-v1"
+                      ? QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")
+                      : selectedEngine === "qwen3-tts"
+                        ? QWEN_VOICES.filter(
+                            (v) =>
+                              v.model === "qwen3-tts-instruct-flash-realtime",
+                          )
+                        : VOICES
+                    ).map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => setSelectedVoice(v.id)}
+                        className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
+                          selectedVoice === v.id
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                            : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
+                        }`}
+                      >
+                        <div className="text-left flex-1 pl-2">
+                          <div className="text-xs font-bold">{v.name}</div>
+                        </div>
+                        {selectedVoice === v.id && (
+                          <Zap className="w-3 h-3 fill-current text-indigo-300" />
+                        )}
+                      </button>
+                    ))}
                   </div>
                 </section>
 
@@ -949,7 +979,11 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="mb-10 px-4">
-                  <AudioProgressBar audioRef={audioRef} isPlaying={isPlaying} />
+                  <AudioProgressBar
+                    audioRef={audioRef}
+                    isPlaying={isPlaying}
+                    audioSrc={audioUrl}
+                  />
                 </div>
 
                 <div className="flex justify-center gap-4">
@@ -985,17 +1019,24 @@ const App: React.FC = () => {
       </footer>
 
       {/* 音频标签及其事件处理 */}
-      {result && (
+      {result && audioUrl && (
         <audio
           ref={audioRef}
-          src={audioUrl || ""}
+          src={audioUrl}
           preload="auto"
-          controls
-          className="fixed bottom-0 left-0 w-full z-50 opacity-90 backdrop-blur-md bg-white/50 dark:bg-black/50"
+          className="hidden"
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onWaiting={() => console.log("Audio is buffering...")}
+          onCanPlay={() => {
+            console.log("Audio can play now.");
+          }}
           onError={(e) => {
             console.error("Audio Element Error:", e.currentTarget.error);
+            setIsPlaying(false);
             alert(
-              "音频加载失败：" + (e.currentTarget.error?.message || "未知错误"),
+              "音频加载失败：" +
+                (e.currentTarget.error?.message || "由于状态异常流掉线"),
             );
           }}
           onEnded={() => {

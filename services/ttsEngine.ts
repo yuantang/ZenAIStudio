@@ -17,8 +17,9 @@ export async function synthesize(
   engine: TTSEngine = 'gemini'
 ): Promise<Uint8Array> {
   switch (engine) {
-    case 'qwen':
-      console.log('[TTS Engine] 使用 阿里云千问 (CosyVoice) 引擎');
+    case 'cosyvoice-v1':
+    case 'qwen3-tts':
+      console.log(`[TTS Engine] 使用 阿里云千问 (${engine}) 引擎`);
       return synthesizeWithQwen(script, voiceName);
     
     case 'gemini':
