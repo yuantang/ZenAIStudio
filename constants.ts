@@ -185,18 +185,14 @@ export const QWEN_VOICES = [
   { id: 'longxiaochun', name: '温柔亲切 (龙小淳)', gender: 'female', model: 'cosyvoice-v1' },
   { id: 'longwan', name: '知性从容 (龙婉)', gender: 'female', model: 'cosyvoice-v1' },
   { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male', model: 'cosyvoice-v1' },
-  { id: 'longmiao', name: '治愈童声 (龙小喵)', gender: 'neutral', model: 'cosyvoice-v1' },
   { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male', model: 'cosyvoice-v1' },
   
   // —— Qwen3-TTS Instruct-Flash-Realtime 官方音色 ——
   // 参考: https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
   { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
   { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Cherry', name: '阳光积极 (芊悦)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
   { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
   { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Kai', name: '耳朵 SPA (凯)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Chelsie', name: '二次元女友 (千雪)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
 ];
 
 export const MEDITATION_PRESETS = [
