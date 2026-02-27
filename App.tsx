@@ -51,6 +51,7 @@ import { MeditationStats } from "./components/MeditationStats";
 import { CourseCatalog } from "./components/CourseCatalog";
 import { AudioProgressBar } from "./components/AudioProgressBar";
 import { DarkModeToggle } from "./components/DarkModeToggle";
+import { SettingsModal } from "./components/SettingsModal";
 
 const LOADING_MESSAGES = [
   "正在对齐您的呼吸节奏...",
@@ -153,7 +154,6 @@ const App: React.FC = () => {
 
   // 密钥配置状态
   const [showSettings, setShowSettings] = useState(false);
-  const [tempApiKey, setTempApiKey] = useState("");
   const [currentApiKey, setCurrentApiKey] = useState<string | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -216,21 +216,6 @@ const App: React.FC = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [result, showSettings, showLibrary, showStats, showCourses]);
-
-  const saveApiKey = () => {
-    if (tempApiKey.trim()) {
-      localStorage.setItem("ZENAI_API_KEY", tempApiKey.trim());
-      setCurrentApiKey(tempApiKey.trim());
-      setShowSettings(false);
-      setTempApiKey("");
-    }
-  };
-
-  const clearApiKey = () => {
-    localStorage.removeItem("ZENAI_API_KEY");
-    setCurrentApiKey(getApiKey());
-    setShowSettings(false);
-  };
 
   const handleSelectCourseDay = useCallback(
     (course: MeditationCourse, day: CourseDay) => {
@@ -383,68 +368,15 @@ const App: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-10 lg:py-20 relative">
-      {/* 设置模态框 */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-            onClick={() => setShowSettings(false)}
-          ></div>
-          <div className="relative glass p-8 md:p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-300">
-            <button
-              onClick={() => setShowSettings(false)}
-              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex flex-col items-center mb-8">
-              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4">
-                <Key className="w-8 h-8 text-indigo-500" />
-              </div>
-              <h3 className="text-2xl font-serif font-bold text-slate-900">
-                配置 API Key
-              </h3>
-              <p className="text-slate-400 text-xs mt-2 text-center leading-relaxed">
-                您的 Key 将仅加密存储在浏览器本地缓存中。
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">
-                  密钥串
-                </label>
-                <input
-                  type="password"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full px-5 py-4 rounded-2xl border-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white shadow-inner text-sm"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={saveApiKey}
-                  disabled={!tempApiKey.trim()}
-                  className={`flex-1 py-4 rounded-xl font-bold text-sm shadow-md transition-all ${tempApiKey.trim() ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
-                >
-                  保存并启用
-                </button>
-                {localStorage.getItem("ZENAI_API_KEY") && (
-                  <button
-                    onClick={clearApiKey}
-                    className="px-6 py-4 rounded-xl font-bold text-sm bg-white border border-slate-100 text-red-400 hover:bg-red-50 transition-all"
-                  >
-                    重置
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 设置模态框 - 使用新的组件 */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => {
+          setShowSettings(false);
+          // 重新读取一次 Key 的状态
+          setCurrentApiKey(getApiKey());
+        }}
+      />
 
       {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] overflow-hidden">

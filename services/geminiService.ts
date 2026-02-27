@@ -3,7 +3,8 @@ import { SYSTEM_PROMPT, TTS_SYSTEM_INSTRUCTION } from "../constants";
 import { MeditationScript, MeditationPersonalization } from "../types";
 
 export const getApiKey = (): string | null => {
-  const cachedKey = localStorage.getItem('ZENAI_API_KEY');
+  // 优先从 localStorage 读取用户配置（设置面板）
+  const cachedKey = localStorage.getItem('zenai_gemini_api_key');
   if (cachedKey) return cachedKey;
   const envKey = process.env.API_KEY;
   if (envKey && envKey !== 'YOUR_API_KEY') return envKey;
@@ -55,7 +56,7 @@ export const generateMeditationScript = async (
   retries = 3
 ): Promise<MeditationScript> => {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key 未配置");
+  if (!apiKey) throw new Error("未检测到 Gemini API Key，请点击右上角设置图标进行配置。");
 
   const ai = new GoogleGenAI({ apiKey });
   const personCtx = buildPersonalizationContext(personalization);

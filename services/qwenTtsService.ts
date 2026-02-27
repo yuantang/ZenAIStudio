@@ -216,9 +216,10 @@ export async function synthesizeWithQwen(
   const voiceConfig = QWEN_VOICES.find(v => v.id === voiceName);
   console.log(`[Qwen TTS] 开始合成，音色: ${voiceName}，模型: ${voiceConfig?.model || 'cosyvoice-v1'}`);
 
-  const apiKey = (import.meta as any).env.VITE_DASHSCOPE_API_KEY;
+  // 优先从 localStorage 读取用户配置，其次退回默认环境变量
+  const apiKey = localStorage.getItem('zenai_dashscope_api_key') || (import.meta as any).env.VITE_DASHSCOPE_API_KEY;
   if (!apiKey) {
-    throw new Error('请在项目根目录的 .env.local 中配置 VITE_DASHSCOPE_API_KEY');
+    throw new Error('未检测到 DashScope API Key，请点击右上角设置图标进行配置。');
   }
 
   const sectionTexts = script.sections
