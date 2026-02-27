@@ -72,21 +72,23 @@ const synthesizeCosyVoice = async (
 // 官方文档: https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
 // URL: wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=<model_name>
 // 鉴权: Authorization: Bearer <api_key> (通过 Sec-WebSocket-Protocol 传递或 query 参数)
-// 事件流: session.update → input_text_buffer.append → session.finish
-// 音频返回: response.audio.delta (base64 编码的 PCM)
-const synthesizeQwen3Realtime = async (
-  text: string,
+// 事件流: session.update → input_text_buffer.append// ─── Qwen3-Instruct Realtime 连续上下文长会话合成 ──────────────────────
+export const synthesizeQwen3RealtimeContinuous = async (
+  sections: { text: string; pause: number }[],
   voiceId: string,
   apiKey: string,
   model: string = 'qwen3-tts-instruct-flash-realtime'
-): Promise<ArrayBuffer> => {
+): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    // 浏览器 WebSocket 不能设置自定义 Header，
-    // 但 DashScope Realtime 端点同样支持 query 参数鉴权（已验证通过）
     const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
-    const pcmChunks: Uint8Array[] = [];
+    
+    const SAMPLE_RATE = 24000;
+    const BYTES_PER_SAMPLE = 2;
+    const audioChunks: Uint8Array[] = [];
+    
+    let currentSectionIndex = 0;
     let eventId = 0;
 
     const sendEvent = (event: any) => {
@@ -94,10 +96,24 @@ const synthesizeQwen3Realtime = async (
       ws.send(JSON.stringify(event));
     };
 
-    ws.onopen = () => {
-      console.log('[Qwen3 Realtime] 连接已建立，配置会话...');
+    const processNextSection = () => {
+      if (currentSectionIndex >= sections.length) {
+        console.log('[Qwen3 Realtime] 所有段落发送完毕，结束会话...');
+        sendEvent({ type: 'session.finish' });
+        return;
+      }
+      
+      const { text } = sections[currentSectionIndex];
+      console.log(`[Qwen3 Realtime] 推流中 -> 段落 ${currentSectionIndex + 1}/${sections.length} (${text.length} 字)`);
+      sendEvent({
+        type: 'input_text_buffer.append',
+        text: text
+      });
+      // server_commit 模式会自动触发合成并返回 response.done
+    };
 
-      // 1. session.update - 配置音色、格式、采样率
+    ws.onopen = () => {
+      console.log('[Qwen3 Realtime] 长会话连接已建立，配置通用参数...');
       sendEvent({
         type: 'session.update',
         session: {
@@ -106,29 +122,18 @@ const synthesizeQwen3Realtime = async (
           language_type: 'Auto',
           response_format: 'pcm',
           sample_rate: 24000,
-          // 语速微调: 0.85
           speed: 0.85,
-          // 音调微调: -0.05
           pitch: -0.05,
-          // Instruct 模型特有: 用自然语言指令精细控制语音表现力
           ...(model.includes('instruct') ? {
-            instructions: '语速稍慢且节奏平稳，音调柔和自然，' +
-              '语气温暖亲切如好友倾诉，吐字清晰舒展，' +
-              '整体风格宁静治愈，适合冥想引导。',
+            instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
           } : {})
         }
       });
-
-      // 2. input_text_buffer.append - 发送待合成文本
-      sendEvent({
-        type: 'input_text_buffer.append',
-        text: text
-      });
-
-      // 3. 延迟后结束会话，让服务器有时间处理
+      
+      // 等待一点时间再发文本，确保 session.update 生效
       setTimeout(() => {
-        sendEvent({ type: 'session.finish' });
-      }, 200);
+        processNextSection();
+      }, 50);
     };
 
     ws.onmessage = (event) => {
@@ -137,14 +142,13 @@ const synthesizeQwen3Realtime = async (
         const eventType = msg.type;
 
         if (eventType === 'error') {
-          console.error('[Qwen3 Realtime] 错误:', msg.error);
+          console.error('[Qwen3 Realtime] 致命错误:', msg.error);
           ws.close();
           reject(new Error(`Qwen3-TTS 错误: ${JSON.stringify(msg.error)}`));
           return;
         }
 
         if (eventType === 'response.audio.delta') {
-          // 音频数据以 base64 编码返回
           const b64 = msg.delta || '';
           if (b64) {
             const binary = atob(b64);
@@ -152,57 +156,46 @@ const synthesizeQwen3Realtime = async (
             for (let i = 0; i < binary.length; i++) {
               bytes[i] = binary.charCodeAt(i);
             }
-            pcmChunks.push(bytes);
+            audioChunks.push(bytes);
           }
-        } else if (eventType === 'response.done' || eventType === 'session.finished') {
-          console.log(`[Qwen3 Realtime] ${eventType}，合成完成`);
+        } 
+        else if (eventType === 'response.done') {
+          // 当前段落已合成完毕，插入等待的静音秒数
+          const pause = sections[currentSectionIndex].pause || 0;
+          if (pause > 0 && currentSectionIndex < sections.length - 1) {
+            const silenceBytes = Math.ceil(SAMPLE_RATE * pause) * BYTES_PER_SAMPLE;
+            audioChunks.push(new Uint8Array(silenceBytes));
+          }
+          currentSectionIndex++;
+          // 接着触发下一个段落
+          processNextSection();
+        } 
+        else if (eventType === 'session.finished') {
+          console.log('[Qwen3 Realtime] session.finished，所有音频均已接收');
           ws.close();
-          const totalLen = pcmChunks.reduce((s, c) => s + c.length, 0);
+          
+          const totalLen = audioChunks.reduce((s, c) => s + c.length, 0);
           if (totalLen === 0) {
-            reject(new Error('Qwen3-TTS 返回了空音频，请检查 API Key 权限'));
+            reject(new Error('Qwen3-TTS 返回了空音频，请检查 API Key 权限或余额'));
             return;
           }
           const merged = new Uint8Array(totalLen);
           let off = 0;
-          for (const c of pcmChunks) { merged.set(c, off); off += c.length; }
-          resolve(merged.buffer);
-        } else {
-          // 其他事件只做日志
-          if (!['response.audio.delta'].includes(eventType)) {
-            console.log(`[Qwen3 Realtime] 事件: ${eventType}`);
-          }
+          for (const c of audioChunks) { merged.set(c, off); off += c.length; }
+          resolve(merged);
         }
       }
     };
 
     ws.onerror = (e) => {
       console.error('[Qwen3 Realtime] WebSocket 错误:', e);
-      reject(new Error('Qwen3-TTS Realtime WebSocket 连接失败，请检查网络和 API Key'));
+      reject(new Error('Qwen3-TTS Realtime WebSocket 连接失败'));
     };
 
     ws.onclose = (e) => {
-      console.log(`[Qwen3 Realtime] 连接关闭: code=${e.code}, reason=${e.reason}`);
+      console.log(`[Qwen3 Realtime] 连接关闭: code=${e.code}`);
     };
   });
-};
-
-// ─── 统一的单段合成入口 ─────────────────────────────────────────────
-export const synthesizeQwenVoiceSync = async (
-  text: string,
-  voiceId: string,
-  apiKey: string
-): Promise<ArrayBuffer> => {
-  const voiceConfig = QWEN_VOICES.find(v => v.id === voiceId);
-  const targetModel = voiceConfig?.model || 'cosyvoice-v1';
-
-  // 根据模型名称自动选择协议
-  if (targetModel.includes('qwen3-tts') || targetModel.includes('qwen-tts')) {
-    console.log(`[TTS Router] → Qwen3 Realtime 协议 (模型: ${targetModel}, 音色: ${voiceId})`);
-    return synthesizeQwen3Realtime(text, voiceId, apiKey, targetModel);
-  } else {
-    console.log(`[TTS Router] → CosyVoice 旧协议 (模型: ${targetModel}, 音色: ${voiceId})`);
-    return synthesizeCosyVoice(text, voiceId, apiKey, targetModel);
-  }
 };
 
 /**
@@ -214,7 +207,8 @@ export async function synthesizeWithQwen(
   voiceName: string = 'longxiaochun'
 ): Promise<Uint8Array> {
   const voiceConfig = QWEN_VOICES.find(v => v.id === voiceName);
-  console.log(`[Qwen TTS] 开始合成，音色: ${voiceName}，模型: ${voiceConfig?.model || 'cosyvoice-v1'}`);
+  const targetModel = voiceConfig?.model || 'cosyvoice-v1';
+  console.log(`[Qwen TTS] 开始合成，音色: ${voiceName}，模型: ${targetModel}`);
 
   // 优先从 localStorage 读取用户配置，其次退回默认环境变量
   const apiKey = localStorage.getItem('zenai_dashscope_api_key') || (import.meta as any).env.VITE_DASHSCOPE_API_KEY;
@@ -222,39 +216,43 @@ export async function synthesizeWithQwen(
     throw new Error('未检测到 DashScope API Key，请点击右上角设置图标进行配置。');
   }
 
-  const sectionTexts = script.sections
-    .map(s => s.content)
-    .filter(t => t.trim());
+  // 构建待合成的长队列
+  const sections = script.sections
+    .map(s => ({ text: s.content.trim(), pause: s.pauseSeconds || 0 }))
+    .filter(s => s.text.length > 0);
 
-  const audioChunks: Uint8Array[] = [];
-  const SAMPLE_RATE = 24000;
-  const BYTES_PER_SAMPLE = 2;
+  if (targetModel.includes('qwen3-tts') || targetModel.includes('qwen-tts')) {
+    // 【全新重构】Qwen3-Instruct 使用单个长会话进行连贯合成，保障所有段落语调和大小的一致性！
+    console.log(`[TTS Router] → 进入长上下文串行会话合成 (Qwen3 Realtime)`);
+    return await synthesizeQwen3RealtimeContinuous(sections, voiceName, apiKey, targetModel);
+  } else {
+    // CosyVoice 为 HTTP 接口依然使用原本的循环合并模式
+    console.log(`[TTS Router] → 使用标准分段合成 (CosyVoice HTTP)`);
+    
+    const audioChunks: Uint8Array[] = [];
+    const SAMPLE_RATE = 24000;
+    const BYTES_PER_SAMPLE = 2;
+    
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+      console.log(`[CosyVoice] 推流中 -> 段落 ${i + 1}/${sections.length} (${section.text.length} 字)`);
+      
+      const pcmData = await synthesizeCosyVoice(section.text, voiceName, apiKey, targetModel);
+      audioChunks.push(new Uint8Array(pcmData));
 
-  for (let i = 0; i < sectionTexts.length; i++) {
-    const text = sectionTexts[i];
-    console.log(`[Qwen TTS] 推流中 -> 段落 ${i + 1}/${sectionTexts.length} (${text.length} 字)`);
-
-    const pcmData = await synthesizeQwenVoiceSync(text, voiceName, apiKey);
-    audioChunks.push(new Uint8Array(pcmData));
-
-    // 段落间无声间隔
-    const pause = script.sections[i]?.pauseSeconds || 0;
-    if (pause > 0 && i < sectionTexts.length - 1) {
-      const silenceBytes = Math.ceil(SAMPLE_RATE * pause) * BYTES_PER_SAMPLE;
-      audioChunks.push(new Uint8Array(silenceBytes));
+      if (section.pause > 0 && i < sections.length - 1) {
+        const silenceBytes = Math.ceil(SAMPLE_RATE * section.pause) * BYTES_PER_SAMPLE;
+        audioChunks.push(new Uint8Array(silenceBytes));
+      }
     }
+    
+    const totalLen = audioChunks.reduce((sum, c) => sum + c.length, 0);
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const chunk of audioChunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return merged;
   }
-
-  // 拼接所有 PCM 数据
-  const totalLen = audioChunks.reduce((sum, c) => sum + c.length, 0);
-  const merged = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const chunk of audioChunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  console.log(`[Qwen TTS] 合成完结! 总字节: ${merged.length}，全长: ${(merged.length / BYTES_PER_SAMPLE / SAMPLE_RATE).toFixed(1)}s`);
-  return merged;
 }
-
