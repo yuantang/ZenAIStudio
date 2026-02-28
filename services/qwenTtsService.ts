@@ -73,6 +73,7 @@ const synthesizeCosyVoice = async (
 // URL: wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=<model_name>
 // 鉴权: Authorization: Bearer <api_key> (通过 Sec-WebSocket-Protocol 传递或 query 参数)
 // 事件流: session.update → input_text_buffer.append// ─── Qwen3-Instruct Realtime 连续上下文长会话合成 ──────────────────────
+// ─── Qwen3-Instruct Realtime 连续上下文长会话合成 ──────────────────────
 export const synthesizeQwen3RealtimeContinuous = async (
   sections: { text: string; pause: number }[],
   voiceId: string,
@@ -84,32 +85,12 @@ export const synthesizeQwen3RealtimeContinuous = async (
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     
-    const SAMPLE_RATE = 24000;
-    const BYTES_PER_SAMPLE = 2;
     const audioChunks: Uint8Array[] = [];
-    
-    let currentSectionIndex = 0;
     let eventId = 0;
 
     const sendEvent = (event: any) => {
       event.event_id = `evt_${++eventId}_${Date.now()}`;
       ws.send(JSON.stringify(event));
-    };
-
-    const processNextSection = () => {
-      if (currentSectionIndex >= sections.length) {
-        console.log('[Qwen3 Realtime] 所有段落发送完毕，结束会话...');
-        sendEvent({ type: 'session.finish' });
-        return;
-      }
-      
-      const { text } = sections[currentSectionIndex];
-      console.log(`[Qwen3 Realtime] 推流中 -> 段落 ${currentSectionIndex + 1}/${sections.length} (${text.length} 字)`);
-      sendEvent({
-        type: 'input_text_buffer.append',
-        text: text
-      });
-      // server_commit 模式会自动触发合成并返回 response.done
     };
 
     ws.onopen = () => {
@@ -130,9 +111,24 @@ export const synthesizeQwen3RealtimeContinuous = async (
         }
       });
       
-      // 等待一点时间再发文本，确保 session.update 生效
+      // 等待 session 配置生效后，一次性发送全部文本文本缓冲
       setTimeout(() => {
-        processNextSection();
+        // 利用换行和省略号暗示段落间的长停顿，让 Instruct 模型理解上下文
+        const fullText = sections.map(s => s.text).join('\n\n……\n\n');
+        
+        console.log(`[Qwen3 Realtime] 推送全脚本流，总长度: ${fullText.length} 字符`);
+        
+        // 建议单次发送文本不要过长，我们保守按 500 字一截发送 append，虽然底层是 server_commit 会自动拼接合并
+        for (let i = 0; i < fullText.length; i += 500) {
+          sendEvent({
+            type: 'input_text_buffer.append',
+            text: fullText.slice(i, i + 500)
+          });
+        }
+        
+        // 所有文本发送完毕，标记会话结束。
+        // 服务器内部将完成缓冲中剩余的识别及合成，最终返回 session.finished
+        sendEvent({ type: 'session.finish' });
       }, 50);
     };
 
@@ -142,7 +138,7 @@ export const synthesizeQwen3RealtimeContinuous = async (
         const eventType = msg.type;
 
         if (eventType === 'error') {
-          console.error('[Qwen3 Realtime] 致命错误:', msg.error);
+          console.error('[Qwen3 Realtime] 服务端返回致命错误:', msg.error);
           ws.close();
           reject(new Error(`Qwen3-TTS 错误: ${JSON.stringify(msg.error)}`));
           return;
@@ -160,23 +156,16 @@ export const synthesizeQwen3RealtimeContinuous = async (
           }
         } 
         else if (eventType === 'response.done') {
-          // 当前段落已合成完毕，插入等待的静音秒数
-          const pause = sections[currentSectionIndex].pause || 0;
-          if (pause > 0 && currentSectionIndex < sections.length - 1) {
-            const silenceBytes = Math.ceil(SAMPLE_RATE * pause) * BYTES_PER_SAMPLE;
-            audioChunks.push(new Uint8Array(silenceBytes));
-          }
-          currentSectionIndex++;
-          // 接着触发下一个段落
-          processNextSection();
+          // 当前单句合成完毕，但由于我们已发送 session.finish，耐心等待最终事件即可
+          // 不再基于 done 做段落映射，避免越界异常
         } 
         else if (eventType === 'session.finished') {
-          console.log('[Qwen3 Realtime] session.finished，所有音频均已接收');
+          console.log('[Qwen3 Realtime] session.finished，所有长流音频接收完毕');
           ws.close();
           
           const totalLen = audioChunks.reduce((s, c) => s + c.length, 0);
           if (totalLen === 0) {
-            reject(new Error('Qwen3-TTS 返回了空音频，请检查 API Key 权限或余额'));
+            reject(new Error('Qwen3-TTS 返回了空音频，可能受到了内容拦截或并发超限'));
             return;
           }
           const merged = new Uint8Array(totalLen);
@@ -188,12 +177,12 @@ export const synthesizeQwen3RealtimeContinuous = async (
     };
 
     ws.onerror = (e) => {
-      console.error('[Qwen3 Realtime] WebSocket 错误:', e);
-      reject(new Error('Qwen3-TTS Realtime WebSocket 连接失败'));
+      console.error('[Qwen3 Realtime] WebSocket 物理连接错误:', e);
+      reject(new Error('Qwen3-TTS Realtime WebSocket 连接断开或失败'));
     };
 
     ws.onclose = (e) => {
-      console.log(`[Qwen3 Realtime] 连接关闭: code=${e.code}`);
+      console.log(`[Qwen3 Realtime] 连接退出: code=${e.code}`);
     };
   });
 };
