@@ -23,6 +23,7 @@ import {
 import {
   GenerationStatus,
   MeditationResult,
+  MeditationScript,
   ExperienceLevel,
   MoodState,
   MeditationStyle,
@@ -47,6 +48,7 @@ import { decodePcm, mixSingleVoiceAudio } from "./services/audioService";
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { ContentLibrary } from "./components/ContentLibrary";
 import { VisualAmbience } from "./components/VisualAmbience";
+import { ScriptEditor } from "./components/ScriptEditor";
 import { MeditationStats } from "./components/MeditationStats";
 import { CourseCatalog } from "./components/CourseCatalog";
 import { AudioProgressBar } from "./components/AudioProgressBar";
@@ -141,6 +143,7 @@ const App: React.FC = () => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showCourses, setShowCourses] = useState(false);
+  const [editingScript, setEditingScript] = useState<MeditationScript | null>(null);
   const [completedDays, setCompletedDays] = useState<Record<string, number[]>>(
     () => {
       try {
@@ -238,7 +241,21 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const processSingleItem = async (currentTheme: string) => {
+  // 辅助函数：将纯文本解析为 MeditationScript 结构
+  const parseTextToScript = (text: string, title: string = "外部导入文稿"): MeditationScript => {
+    // 按双换行符分割段段落，或按较长的停顿标点
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim());
+    return {
+      title,
+      sections: paragraphs.map((p, i) => ({
+        type: i === 0 ? 'intro' : (i === paragraphs.length - 1 ? 'outro' : 'visualization'),
+        content: p.trim(),
+        pauseSeconds: 3, // 默认段间停顿
+      }))
+    };
+  };
+
+  const generateAIScript = async (currentTheme: string) => {
     setErrorInfo(null);
     setStatus(GenerationStatus.WRITING);
     setProgress(5);
@@ -251,43 +268,63 @@ const App: React.FC = () => {
         style: selectedStyle,
       },
     );
-    setProgress(20);
-
-    setStatus(GenerationStatus.VOICING);
-    setProgress(30);
-
-    const rawPcm = await synthesize(script, selectedVoice, selectedEngine);
-    setProgress(75);
-
-    const ctx = new (
-      window.AudioContext || (window as any).webkitAudioContext
-    )();
-    const voiceBuffer = await decodePcm(rawPcm, ctx);
-    await ctx.close();
-    setProgress(80);
-
-    setStatus(GenerationStatus.MIXING);
-    const track = BACKGROUND_TRACKS.find((t) => t.id === selectedBG)!;
-    const finalBlob = await mixSingleVoiceAudio(
-      voiceBuffer,
-      track.url,
-      script.sections,
-      (stage, mixPercent) => {
-        // 混音阶段映射到总进度的 80%~97%
-        const mappedProgress = 80 + Math.floor(mixPercent * 0.17);
-        setProgress(mappedProgress);
-        setMixingStage(stage);
-      },
-    );
-
     setProgress(100);
-    return {
-      id: Math.random().toString(36).substr(2, 9),
-      theme: currentTheme,
-      script,
-      audioBlob: finalBlob,
-      createdAt: Date.now(),
-    };
+    setEditingScript(script);
+    setStatus(GenerationStatus.EDITING);
+  };
+
+  const synthesizeAndMix = async (script: MeditationScript) => {
+    try {
+      setErrorInfo(null);
+      setStatus(GenerationStatus.VOICING);
+      setProgress(10);
+
+      const rawPcm = await synthesize(script, selectedVoice, selectedEngine);
+      setProgress(40);
+
+      const ctx = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
+      const voiceBuffer = await decodePcm(rawPcm, ctx);
+      await ctx.close();
+      setProgress(50);
+
+      setStatus(GenerationStatus.MIXING);
+      const track = BACKGROUND_TRACKS.find((t) => t.id === selectedBG)!;
+      const finalBlob = await mixSingleVoiceAudio(
+        voiceBuffer,
+        track.url,
+        script.sections,
+        (stage, mixPercent) => {
+          // 混音阶段映射到总进度的 50%~95%
+          const mappedProgress = 50 + Math.floor(mixPercent * 0.45);
+          setProgress(mappedProgress);
+          setMixingStage(stage);
+        },
+      );
+
+      const res: MeditationResult = {
+        id: Math.random().toString(36).substr(2, 9),
+        theme: theme || script.title,
+        script,
+        audioBlob: finalBlob,
+        createdAt: Date.now(),
+      };
+
+      setProgress(100);
+      setResult(res);
+      setHistory((prev) => {
+        const next = [res, ...prev];
+        saveHistoryToStorage(next);
+        return next;
+      });
+      setStatus(GenerationStatus.COMPLETED);
+      setEditingScript(null); // 合成完成，清除编辑状态
+    } catch (e: any) {
+      console.error("合成流程异常:", e);
+      setErrorInfo(e.message || "音频合成失败");
+      setStatus(GenerationStatus.ERROR);
+    }
   };
 
   const handleGenerate = async () => {
@@ -297,21 +334,20 @@ const App: React.FC = () => {
       return;
     }
     try {
-      console.log(">>> 开始生成流程 <<<");
-      const res = await processSingleItem(theme);
-      console.log(">>> 生成成功！正在展示结果 <<<");
-      setResult(res);
-      setHistory((prev) => {
-        const next = [res, ...prev];
-        saveHistoryToStorage(next);
-        return next;
-      });
-      setStatus(GenerationStatus.COMPLETED);
+      console.log(">>> 开始生成文稿 <<<");
+      await generateAIScript(theme);
     } catch (e: any) {
-      console.error("生成流程异常:", e);
-      setErrorInfo(e.message || "未知内部错误");
+      console.error("文稿生成异常:", e);
+      setErrorInfo(e.message || "文稿生成失败");
       setStatus(GenerationStatus.ERROR);
     }
+  };
+
+  const handleManualInput = (text: string) => {
+    if (!text.trim()) return;
+    const script = parseTextToScript(text);
+    setEditingScript(script);
+    setStatus(GenerationStatus.EDITING);
   };
 
   const togglePlay = () => {
@@ -378,11 +414,38 @@ const App: React.FC = () => {
         }}
       />
 
+      {/* 编辑器模态框 */}
+      {status === GenerationStatus.EDITING && editingScript && (
+        <ScriptEditor 
+          script={editingScript}
+          onSave={(updated) => synthesizeAndMix(updated)}
+          onCancel={() => {
+            setEditingScript(null);
+            setStatus(GenerationStatus.IDLE);
+          }}
+          isProcessing={status === GenerationStatus.VOICING || status === GenerationStatus.MIXING}
+        />
+      )}
+
       {/* 背景动态装饰 */}
-      <div className="fixed inset-0 -z-10 bg-[#f9fafc] overflow-hidden">
-        <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 rounded-full blur-[100px] breathing-glow"></div>
+      {/* 编辑器模态框 */}
+      {status === GenerationStatus.EDITING && editingScript && (
+        <ScriptEditor 
+          script={editingScript}
+          onSave={(updated) => synthesizeAndMix(updated)}
+          onCancel={() => {
+            setEditingScript(null);
+            setStatus(GenerationStatus.IDLE);
+          }}
+          isProcessing={status === GenerationStatus.VOICING || status === GenerationStatus.MIXING}
+        />
+      )}
+
+      {/* 背景动态装饰 */}
+      <div className="fixed inset-0 -z-10 bg-[#f9fafc] dark:bg-slate-950 overflow-hidden transition-colors duration-500">
+        <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 dark:bg-indigo-900/10 rounded-full blur-[100px] breathing-glow"></div>
         <div
-          className="absolute bottom-[-5%] left-[-5%] w-[500px] h-[500px] bg-teal-50/50 rounded-full blur-[90px] breathing-glow"
+          className="absolute bottom-[-5%] left-[-5%] w-[500px] h-[500px] bg-teal-50/50 dark:bg-teal-900/10 rounded-full blur-[90px] breathing-glow"
           style={{ animationDelay: "2s" }}
         ></div>
       </div>
@@ -454,7 +517,7 @@ const App: React.FC = () => {
                 </div>
 
                 <textarea
-                  className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 text-slate-700 placeholder:text-slate-300 text-sm shadow-inner"
+                  className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 dark:ring-slate-800 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 placeholder:text-slate-300 text-sm shadow-inner"
                   rows={3}
                   placeholder="用您最舒适的语言描述冥想目标..."
                   value={theme}
@@ -464,6 +527,34 @@ const App: React.FC = () => {
                       setStatus(GenerationStatus.IDLE);
                   }}
                 />
+
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                  <button 
+                    onClick={() => {
+                      const text = prompt("请输入或粘贴您的冥想词内容：");
+                      if (text) handleManualInput(text);
+                    }}
+                    className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/40 dark:bg-slate-800/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/30 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all uppercase tracking-wider"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" /> 粘贴文本
+                  </button>
+                  <label className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/40 dark:bg-slate-800/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/30 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all uppercase tracking-wider cursor-pointer">
+                    <input 
+                      type="file" 
+                      accept=".txt" 
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => handleManualInput(ev.target?.result as string);
+                          reader.readAsText(file);
+                        }
+                      }}
+                    />
+                    <Download className="w-3.5 h-3.5 rotate-180" /> 上传文稿
+                  </label>
+                </div>
               </section>
 
               <section>
@@ -728,12 +819,12 @@ const App: React.FC = () => {
                     status === GenerationStatus.COMPLETED ||
                     status === GenerationStatus.ERROR ? (
                     <>
-                      <RefreshCw className="w-5 h-5 mr-3" /> 生成专属冥想
+                      <Sparkles className="w-5 h-5 mr-3" /> AI 创作文稿
                     </>
                   ) : (
                     <>
                       <RefreshCw className="w-5 h-5 mr-3 animate-spin" />{" "}
-                      {progress}% 处理中
+                      文稿构思中... ({progress}%)
                     </>
                   )}
                 </button>
