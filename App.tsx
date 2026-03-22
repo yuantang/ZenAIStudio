@@ -428,20 +428,6 @@ const App: React.FC = () => {
       )}
 
       {/* 背景动态装饰 */}
-      {/* 编辑器模态框 */}
-      {status === GenerationStatus.EDITING && editingScript && (
-        <ScriptEditor 
-          script={editingScript}
-          onSave={(updated) => synthesizeAndMix(updated)}
-          onCancel={() => {
-            setEditingScript(null);
-            setStatus(GenerationStatus.IDLE);
-          }}
-          isProcessing={status === GenerationStatus.VOICING || status === GenerationStatus.MIXING}
-        />
-      )}
-
-      {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] dark:bg-slate-950 overflow-hidden transition-colors duration-500">
         <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 dark:bg-indigo-900/10 rounded-full blur-[100px] breathing-glow"></div>
         <div
