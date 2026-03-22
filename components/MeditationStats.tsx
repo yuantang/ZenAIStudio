@@ -20,13 +20,15 @@ export const MeditationStats: React.FC<MeditationStatsProps> = ({
 
     // 累计时长（分钟）
     const totalMinutes = history.reduce(
-      (sum, h) => sum + (h.duration || 10),
+      (sum, h) => sum + (Number(h?.duration) || 10),
       0,
     );
 
     // 按日期分组统计
     const daySet = new Set(
-      history.map((h) => new Date(h.createdAt).toDateString()),
+      history
+        .filter(h => h?.createdAt)
+        .map((h) => new Date(h.createdAt).toDateString()),
     );
     const totalDays = daySet.size;
 
@@ -58,7 +60,9 @@ export const MeditationStats: React.FC<MeditationStatsProps> = ({
     // 主题词频分析
     const themeCounts: Record<string, number> = {};
     history.forEach((h) => {
-      const words = h.theme.split(/\s+/).filter((w) => w.length > 1);
+      if (!h?.theme) return;
+      const themeText = typeof h.theme === "string" ? h.theme : "";
+      const words = themeText.split(/\s+/).filter((w) => w.length > 1);
       words.forEach((w) => {
         themeCounts[w] = (themeCounts[w] || 0) + 1;
       });

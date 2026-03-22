@@ -478,38 +478,26 @@ const App: React.FC = () => {
         {/* 控制台 */}
         <div className="lg:col-span-5 space-y-8 order-2 lg:order-1">
           <div className="glass p-8 md:p-12 rounded-[3rem] shadow-xl shadow-slate-200/40 border border-white/50">
-            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-8 flex items-center justify-between">
-              <span className="flex items-center">
-                <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
-              </span>
-              <div
-                className={`flex items-center gap-2 px-3 py-1 rounded-full text-[9px] font-bold transition-all ${currentApiKey ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600 cursor-pointer"}`}
-                onClick={() => !currentApiKey && setShowSettings(true)}
-              >
-                {currentApiKey ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3" /> API 就绪
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-3 h-3" /> 需要配置
-                  </>
-                )}
-              </div>
+            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-8 flex items-center">
+              <Sparkles className="w-5 h-5 mr-3 text-indigo-500" /> 工作台配置
             </h2>
 
-            <div className="space-y-8">
-              <section>
-                <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em] flex items-center">
-                  <MessageSquare className="w-4 h-4 mr-2" /> 冥想主题 / Intent
-                </label>
+            <div className="space-y-12">
+              {/* Step 1: Content */}
+              <section className="relative">
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black shadow-lg shadow-indigo-200 dark:shadow-none">1</span>
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+                    灵感与内容 / <span className="text-slate-400 font-light">Content Source</span>
+                  </label>
+                </div>
 
                 <div className="flex flex-wrap gap-2 mb-4">
                   {MEDITATION_PRESETS.map((p) => (
                     <button
                       key={p.id}
                       onClick={() => applyPreset(p.prompt)}
-                      className="px-3 py-1.5 rounded-full bg-indigo-50/50 border border-indigo-100/50 text-indigo-600 text-[9px] font-bold hover:bg-indigo-600 hover:text-white transition-all"
+                      className="px-3 py-1.5 rounded-full bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100/50 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-[9px] font-bold hover:bg-indigo-600 hover:text-white transition-all"
                     >
                       {p.icon} {p.label}
                     </button>
@@ -557,279 +545,252 @@ const App: React.FC = () => {
                 </div>
               </section>
 
-              <section>
-                <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
-                  ⏱ 时长 / Duration
-                </label>
-                <div className="flex gap-2">
-                  {DURATION_OPTIONS.map((d) => (
+              {/* Step 2: Settings */}
+              <section className="relative">
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black">2</span>
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+                    冥想参数 / <span className="text-slate-400 font-light">Custom Settings</span>
+                  </label>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <div className="text-[9px] text-slate-400 font-bold mb-3 uppercase tracking-wider">⏱ 疗愈时长</div>
+                    <div className="flex gap-2">
+                      {DURATION_OPTIONS.map((d) => (
+                        <button
+                          key={d.id}
+                          onClick={() => setSelectedDuration(d.id)}
+                          className={`flex-1 flex flex-col items-center p-3 rounded-2xl border transition-all ${
+                            selectedDuration === d.id
+                              ? "bg-indigo-50 border-indigo-200 shadow-sm"
+                              : "bg-white/40 border-slate-50 hover:border-indigo-100"
+                          }`}
+                        >
+                          <span className="text-lg mb-0.5">{d.icon}</span>
+                          <span className="text-[10px] font-bold text-slate-600">{d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
                     <button
-                      key={d.id}
-                      onClick={() => setSelectedDuration(d.id)}
-                      className={`flex-1 flex flex-col items-center p-3 rounded-2xl border transition-all ${
-                        selectedDuration === d.id
-                          ? "bg-indigo-50 border-indigo-200 shadow-sm"
-                          : "bg-white/40 border-slate-50 hover:border-indigo-100"
-                      }`}
+                      onClick={() => setShowPersonalization(!showPersonalization)}
+                      className="w-full flex items-center justify-between py-2 px-4 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 text-[10px] font-bold text-slate-500 hover:text-indigo-500 transition-all"
                     >
-                      <span className="text-lg mb-0.5">{d.icon}</span>
-                      <span className="text-[10px] font-bold text-slate-600">
-                        {d.label}
+                      <span className="flex items-center">
+                        <Settings className="w-3.5 h-3.5 mr-2" /> 
+                        {showPersonalization ? "收起个性化选项" : "展开详情设定 (经验、情绪、风格)"}
                       </span>
-                      <span className="text-[8px] text-slate-400">
-                        {d.description}
-                      </span>
+                      <span className={`text-xs transition-transform ${showPersonalization ? "rotate-180" : ""}`}>▼</span>
                     </button>
-                  ))}
+
+                    {showPersonalization && (
+                      <div className="space-y-4 pt-4 animate-in slide-in-from-top-2">
+                        {/* 经验等级 */}
+                        <div>
+                          <div className="text-[9px] text-slate-400 font-bold mb-2">🧘 冥想经验</div>
+                          <div className="flex gap-2">
+                            {EXPERIENCE_OPTIONS.map((e) => (
+                              <button
+                                key={e.id}
+                                onClick={() => setSelectedExperience(e.id)}
+                                className={`flex-1 flex flex-col items-center p-2.5 rounded-xl border transition-all text-center ${
+                                  selectedExperience === e.id
+                                    ? "bg-violet-50 border-violet-200 shadow-sm"
+                                    : "bg-white/40 border-slate-50 hover:border-violet-100"
+                                }`}
+                              >
+                                <span className="text-base mb-0.5">{e.icon}</span>
+                                <span className="text-[9px] font-bold text-slate-600">{e.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 当前情绪 */}
+                        <div>
+                          <div className="text-[9px] text-slate-400 font-bold mb-2">💭 当前情绪</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {MOOD_OPTIONS.map((m) => (
+                              <button
+                                key={m.id}
+                                onClick={() => setSelectedMood(m.id)}
+                                className={`px-3 py-1.5 rounded-full border text-[9px] font-bold transition-all ${
+                                  selectedMood === m.id
+                                    ? "bg-amber-50 border-amber-200 text-amber-700"
+                                    : "bg-white/40 border-slate-50 text-slate-500 hover:border-amber-100"
+                                }`}
+                              >
+                                {m.icon} {m.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 冥想风格 */}
+                        <div className="pb-2 text-[9px] text-slate-400 font-bold mb-2">✨ 引导风格</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {STYLE_OPTIONS.map((s) => (
+                            <button
+                              key={s.id}
+                              onClick={() => setSelectedStyle(s.id)}
+                              className={`flex items-center p-2.5 rounded-xl border transition-all ${
+                                selectedStyle === s.id
+                                  ? "bg-emerald-50 border-emerald-200 shadow-sm"
+                                  : "bg-white/40 border-slate-50 hover:border-emerald-100"
+                              }`}
+                            >
+                              <span className="text-base mr-2">{s.icon}</span>
+                              <span className="text-[9px] font-bold text-slate-600">{s.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
 
-              <section>
-                <button
-                  onClick={() => setShowPersonalization(!showPersonalization)}
-                  className="w-full flex items-center justify-between text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em] hover:text-indigo-500 transition-colors"
-                >
-                  <span className="flex items-center">
-                    <Settings className="w-4 h-4 mr-2" /> 个性化定制 /
-                    Personalize
-                  </span>
-                  <span
-                    className={`text-xs transition-transform ${showPersonalization ? "rotate-180" : ""}`}
-                  >
-                    ▼
-                  </span>
-                </button>
+              {/* Step 3: Voice & Atmosphere */}
+              <section className="relative">
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-black">3</span>
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+                    声音与氛围 / <span className="text-slate-400 font-light">Audio Stylist</span>
+                  </label>
+                </div>
 
-                {showPersonalization && (
-                  <div className="space-y-4 animate-in slide-in-from-top-2">
-                    {/* 经验等级 */}
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <div className="text-[9px] text-slate-400 font-bold mb-2">
-                        🧘 冥想经验
-                      </div>
-                      <div className="flex gap-2">
-                        {EXPERIENCE_OPTIONS.map((e) => (
+                      <div className="text-[9px] text-slate-400 font-bold mb-3 uppercase tracking-wider">🎙 引导配音</div>
+                      <div className="space-y-2">
+                        {TTS_ENGINES.map((eng) => (
                           <button
-                            key={e.id}
-                            onClick={() => setSelectedExperience(e.id)}
-                            className={`flex-1 flex flex-col items-center p-2.5 rounded-xl border transition-all text-center ${
-                              selectedExperience === e.id
-                                ? "bg-violet-50 border-violet-200 shadow-sm"
-                                : "bg-white/40 border-slate-50 hover:border-violet-100"
+                            key={eng.id}
+                            onClick={() => {
+                              setSelectedEngine(eng.id);
+                              if (eng.id === "cosyvoice-v1") {
+                                setSelectedVoice(QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")[0].id);
+                              } else if (eng.id === "qwen3-tts") {
+                                setSelectedVoice(QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime")[0].id);
+                              } else {
+                                setSelectedVoice(VOICES[0].id);
+                              }
+                            }}
+                            className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
+                              selectedEngine === eng.id
+                                ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
+                                : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
                             }`}
                           >
-                            <span className="text-base mb-0.5">{e.icon}</span>
-                            <span className="text-[9px] font-bold text-slate-600">
-                              {e.label}
-                            </span>
-                            <span className="text-[7px] text-slate-400">
-                              {e.description}
-                            </span>
+                            <span className="text-base mr-2">{eng.icon}</span>
+                            <div className="text-left flex-1 min-w-0">
+                              <div className="text-[10px] font-bold truncate">{eng.name}</div>
+                              {selectedEngine === eng.id && (
+                                <div className="text-[8px] text-indigo-200">正在使用</div>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {(selectedEngine === "cosyvoice-v1"
+                          ? QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")
+                          : selectedEngine === "qwen3-tts"
+                            ? QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime")
+                            : VOICES
+                        ).map((v) => (
+                          <button
+                            key={v.id}
+                            onClick={() => setSelectedVoice(v.id)}
+                            className={`px-3 py-1.5 rounded-xl border text-[9px] font-bold transition-all ${
+                              selectedVoice === v.id
+                                ? "bg-indigo-100 border-indigo-300 text-indigo-700"
+                                : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
+                            }`}
+                          >
+                            {v.name}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* 当前情绪 */}
                     <div>
-                      <div className="text-[9px] text-slate-400 font-bold mb-2">
-                        💭 当前情绪
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {MOOD_OPTIONS.map((m) => (
+                      <div className="text-[9px] text-slate-400 font-bold mb-3 uppercase tracking-wider">🌿 自然氛围</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {BACKGROUND_TRACKS.map((t) => (
                           <button
-                            key={m.id}
-                            onClick={() => setSelectedMood(m.id)}
-                            className={`px-3 py-1.5 rounded-full border text-[9px] font-bold transition-all ${
-                              selectedMood === m.id
-                                ? "bg-amber-50 border-amber-200 text-amber-700"
-                                : "bg-white/40 border-slate-50 text-slate-500 hover:border-amber-100"
+                            key={t.id}
+                            onClick={() => setSelectedBG(t.id)}
+                            className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
+                              selectedBG === t.id
+                                ? "bg-indigo-50 border-indigo-200 shadow-sm"
+                                : "bg-white/40 border-slate-50 hover:border-indigo-100"
                             }`}
                           >
-                            {m.icon} {m.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* 冥想风格 */}
-                    <div>
-                      <div className="text-[9px] text-slate-400 font-bold mb-2">
-                        ✨ 冥想风格
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {STYLE_OPTIONS.map((s) => (
-                          <button
-                            key={s.id}
-                            onClick={() => setSelectedStyle(s.id)}
-                            className={`flex items-center p-2.5 rounded-xl border transition-all ${
-                              selectedStyle === s.id
-                                ? "bg-emerald-50 border-emerald-200 shadow-sm"
-                                : "bg-white/40 border-slate-50 hover:border-emerald-100"
-                            }`}
-                          >
-                            <span className="text-base mr-2">{s.icon}</span>
-                            <span className="text-[9px] font-bold text-slate-600">
-                              {s.label}
-                            </span>
+                            <span className="text-xl mb-1">{t.icon}</span>
+                            <span className="text-[9px] font-bold text-slate-400">{t.name}</span>
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
               </section>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <section>
-                  <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
-                    语音引擎 / Engine
+              {/* Step 4: Finalize */}
+              <section className="relative">
+                <div className="flex items-center gap-3 mb-6">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-black border border-slate-700">4</span>
+                  <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+                    开启创作 / <span className="text-slate-400 font-light">Magic Starts</span>
                   </label>
-                  <div className="space-y-2 mb-6">
-                    {TTS_ENGINES.map((eng) => (
-                      <button
-                        key={eng.id}
-                        onClick={() => {
-                          setSelectedEngine(eng.id);
-                          // 切换引擎时自动选第一个对应语音
-                          if (eng.id === "cosyvoice-v1") {
-                            setSelectedVoice(
-                              QWEN_VOICES.filter(
-                                (v) => v.model === "cosyvoice-v1",
-                              )[0].id,
-                            );
-                          } else if (eng.id === "qwen3-tts") {
-                            setSelectedVoice(
-                              QWEN_VOICES.filter(
-                                (v) =>
-                                  v.model ===
-                                  "qwen3-tts-instruct-flash-realtime",
-                              )[0].id,
-                            );
-                          } else {
-                            setSelectedVoice(VOICES[0].id);
-                          }
-                        }}
-                        className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
-                          selectedEngine === eng.id
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                            : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
-                        }`}
-                      >
-                        <span className="text-base mr-2">{eng.icon}</span>
-                        <div className="text-left flex-1">
-                          <div className="text-xs font-bold">{eng.name}</div>
-                          <div
-                            className={`text-[8px] ${selectedEngine === eng.id ? "text-indigo-200" : "text-slate-400"}`}
-                          >
-                            {eng.description}
-                          </div>
-                        </div>
-                        <span
-                          className={`text-[7px] font-black px-1.5 py-0.5 rounded-full ${
-                            selectedEngine === eng.id
-                              ? "bg-white/20 text-white"
-                              : eng.badgeColor
-                          }`}
-                        >
-                          {eng.badge}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
-                    引导师 / Guide
-                  </label>
-                  <div className="space-y-2">
-                    {(selectedEngine === "cosyvoice-v1"
-                      ? QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")
-                      : selectedEngine === "qwen3-tts"
-                        ? QWEN_VOICES.filter(
-                            (v) =>
-                              v.model === "qwen3-tts-instruct-flash-realtime",
-                          )
-                        : VOICES
-                    ).map((v) => (
-                      <button
-                        key={v.id}
-                        onClick={() => setSelectedVoice(v.id)}
-                        className={`w-full flex items-center p-3 rounded-2xl border transition-all ${
-                          selectedVoice === v.id
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                            : "bg-white/40 border-slate-50 text-slate-500 hover:border-indigo-100"
-                        }`}
-                      >
-                        <div className="text-left flex-1 pl-2">
-                          <div className="text-xs font-bold">{v.name}</div>
-                        </div>
-                        {selectedVoice === v.id && (
-                          <Zap className="w-3 h-3 fill-current text-indigo-300" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                </div>
 
-                <section>
-                  <label className="block text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">
-                    氛围 / Atmosphere
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {BACKGROUND_TRACKS.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => setSelectedBG(t.id)}
-                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${
-                          selectedBG === t.id
-                            ? "bg-indigo-50 border-indigo-200 shadow-sm"
-                            : "bg-white/40 border-slate-50 hover:border-indigo-100"
-                        }`}
-                      >
-                        <span className="text-xl mb-1">{t.icon}</span>
-                        <span className="text-[9px] font-bold text-slate-400">
-                          {t.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  disabled={
-                    status !== GenerationStatus.IDLE &&
-                    status !== GenerationStatus.COMPLETED &&
-                    status !== GenerationStatus.ERROR
-                  }
-                  onClick={handleGenerate}
-                  className={`w-full py-5 rounded-full font-bold text-md shadow-lg flex items-center justify-center transition-all ${
-                    status === GenerationStatus.IDLE ||
-                    status === GenerationStatus.COMPLETED ||
-                    status === GenerationStatus.ERROR
-                      ? "bg-slate-900 text-white hover:bg-black hover:-translate-y-0.5 shadow-slate-300"
-                      : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                  }`}
-                >
-                  {!currentApiKey ? (
-                    <>
-                      <Key className="w-5 h-5 mr-3" /> 请先配置 API Key
-                    </>
-                  ) : status === GenerationStatus.IDLE ||
-                    status === GenerationStatus.COMPLETED ||
-                    status === GenerationStatus.ERROR ? (
-                    <>
-                      <Sparkles className="w-5 h-5 mr-3" /> AI 创作文稿
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-5 h-5 mr-3 animate-spin" />{" "}
-                      文稿构思中... ({progress}%)
-                    </>
-                  )}
-                </button>
-              </div>
-
+                <div className="pt-2">
+                  <button
+                    disabled={
+                      status !== GenerationStatus.IDLE &&
+                      status !== GenerationStatus.COMPLETED &&
+                      status !== GenerationStatus.ERROR
+                    }
+                    onClick={handleGenerate}
+                    className={`w-full py-5 rounded-[2.5rem] font-bold text-md shadow-xl flex items-center justify-center transition-all ${
+                      status === GenerationStatus.IDLE ||
+                      status === GenerationStatus.COMPLETED ||
+                      status === GenerationStatus.ERROR
+                        ? "bg-slate-900 dark:bg-indigo-600 text-white hover:bg-black dark:hover:bg-indigo-700 hover:-translate-y-1 active:scale-95 shadow-slate-300 dark:shadow-indigo-900/40"
+                        : "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
+                    }`}
+                  >
+                    {!currentApiKey ? (
+                      <>
+                        <Key className="w-5 h-5 mr-3" /> 请先配置 API Key
+                      </>
+                    ) : status === GenerationStatus.IDLE ||
+                      status === GenerationStatus.COMPLETED ||
+                      status === GenerationStatus.ERROR ? (
+                      <>
+                        <Sparkles className="w-5 h-5 mr-3" /> 开始构思文稿
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-5 h-5 mr-3 animate-spin" />
+                        文稿构思中... ({progress}%)
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[9px] text-center text-slate-400 mt-4 leading-relaxed italic">
+                    点击后系统将首先为您生成并展示文稿预览<br/>
+                    您可以预览、修改后确认开始一站式合成
+                  </p>
+                </div>
+              </section>
               {/* 功能入口排 */}
               <div className="flex gap-2">
                 <button
