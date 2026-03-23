@@ -81,34 +81,50 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    // 采用更标准安全的 Sec-WebSocket-Protocol 认证方式
-    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`;
-    const ws = new WebSocket(url, ['api-key', apiKey]);
+    // 对齐 CosyVoice 的 URL 模式，经验证这种 API Key 的传递方式在 DashScope 物理连接上最稳健
+    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?api_key=${apiKey}&model=${model}`;
+    console.log(`[Qwen3 Realtime] 尝试建立连接: ${model}`);
+    
+    const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     
     const audioChunks: Uint8Array[] = [];
     let eventId = 0;
 
-    // 超时保护：15秒建立不起来就放弃
+    // 超时保护
     const connectionTimeout = setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
         ws.close();
-        reject(new Error('Qwen3-TTS 连接超时，请检查网络或 API Key 是否有效'));
+        reject(new Error('Qwen3-TTS 握手超时，请检查网络链路'));
       }
     }, 15000);
 
     const sendEvent = (event: any) => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        console.warn('[Qwen3 Realtime] 尝试发送消息但连接已关闭:', event.type);
-        return;
-      }
+      if (ws.readyState !== WebSocket.OPEN) return;
       event.event_id = `evt_${++eventId}_${Date.now()}`;
       ws.send(JSON.stringify(event));
     };
 
     ws.onopen = () => {
       clearTimeout(connectionTimeout);
-      console.log('[Qwen3 Realtime] 物理连接已建立，等待 session.created...');
+      console.log('[Qwen3 Realtime] 物理连接已成功开启，发送 session.update 初始化参数...');
+      
+      // 注意：实时协议通常要求在连接建立后尽快完成 session 配置
+      sendEvent({
+        type: 'session.update',
+        session: {
+          mode: 'server_commit',
+          voice: voiceId,
+          language_type: 'Auto',
+          response_format: 'pcm',
+          sample_rate: 24000,
+          speed: 0.85,
+          pitch: -0.05,
+          ...(model.includes('instruct') ? {
+            instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
+          } : {})
+        }
+      });
     };
 
     ws.onmessage = (event) => {
@@ -116,40 +132,17 @@ export const synthesizeQwen3RealtimeContinuous = async (
         const msg = JSON.parse(event.data);
         const eventType = msg.type;
 
-        // 核心事件：会话已创建
-        if (eventType === 'session.created') {
-          console.log('[Qwen3 Realtime] ← session.created，发送配置参数...');
-          sendEvent({
-            type: 'session.update',
-            session: {
-              mode: 'server_commit',
-              voice: voiceId,
-              language_type: 'Auto',
-              response_format: 'pcm',
-              sample_rate: 24000,
-              speed: 0.85,
-              pitch: -0.05,
-              ...(model.includes('instruct') ? {
-                instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
-              } : {})
-            }
-          });
-        }
-
-        // 核心事件：参数已更新
-        else if (eventType === 'session.updated') {
-          console.log('[Qwen3 Realtime] ← session.updated，开始推送文稿流...');
-          const fullText = sections.map(s => s.text).join('\n\n……\n\n');
+        // 服务端确认会话已更新，此时推流最安全
+        if (eventType === 'session.updated' || eventType === 'session.created') {
+          console.log(`[Qwen3 Realtime] ← ${eventType}，开始推送全篇文稿...`);
           
-          // 分段推送，避免单包过大
+          const fullText = sections.map(s => s.text).join('\n\n……\n\n');
           for (let i = 0; i < fullText.length; i += 500) {
             sendEvent({
               type: 'input_text_buffer.append',
               text: fullText.slice(i, i + 500)
             });
           }
-          
-          // 标记发送完毕
           sendEvent({ type: 'session.finish' });
         }
 
