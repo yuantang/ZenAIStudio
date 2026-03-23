@@ -73,7 +73,56 @@ const synthesizeCosyVoice = async (
 // URL: wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=<model_name>
 // 鉴权: Authorization: Bearer <api_key> (通过 Sec-WebSocket-Protocol 传递或 query 参数)
 // 事件流: session.update → input_text_buffer.append// ─── Qwen3-Instruct Realtime 连续上下文长会话合成 ──────────────────────
-// ─── Qwen3-Instruct Realtime 连续上下文长会话合成 ──────────────────────
+// ─── Qwen3-TTS 生产环境 Serverless 中转 ──────────────────────────────
+// 前端通过 HTTP POST 调用 Vercel Serverless Function，由服务端完成 WebSocket 合成
+const synthesizeQwen3ViaApi = async (
+  sections: { text: string; pause: number }[],
+  voiceId: string,
+  apiKey: string,
+  model: string
+): Promise<Uint8Array> => {
+  const fullText = sections.map(s => s.text).join('\n\n……\n\n');
+  const SAMPLE_RATE = 24000;
+  const BYTES_PER_SAMPLE = 2;
+  
+  console.log(`[Qwen3 API] 调用 Serverless 中转，文本长度: ${fullText.length}`);
+  
+  const response = await fetch('/api/tts-realtime', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: fullText,
+      voice: voiceId,
+      model,
+      apiKey,
+      instructions: model.includes('instruct')
+        ? '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
+        : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => ({}));
+    throw new Error(`Serverless 合成失败: ${errBody.error || response.statusText}`);
+  }
+
+  const result = await response.json();
+  if (!result.success || !result.audio) {
+    throw new Error('Serverless 返回格式异常');
+  }
+
+  // 解码 base64 PCM 数据
+  const binary = atob(result.audio);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  
+  console.log(`[Qwen3 API] Serverless 合成成功: ${bytes.length} 字节`);
+  return bytes;
+};
+
+// ─── Qwen3-TTS Realtime 新协议（仅本地开发使用）──────────────────────
 export const synthesizeQwen3RealtimeContinuous = async (
   sections: { text: string; pause: number }[],
   voiceId: string,
@@ -227,9 +276,17 @@ export async function synthesizeWithQwen(
     .filter(s => s.text.length > 0);
 
   if (targetModel.includes('qwen3-tts') || targetModel.includes('qwen-tts')) {
-    // 【全新重构】Qwen3-Instruct 使用单个长会话进行连贯合成，保障所有段落语调和大小的一致性！
-    console.log(`[TTS Router] → 进入长上下文串行会话合成 (Qwen3 Realtime)`);
-    return await synthesizeQwen3RealtimeContinuous(sections, voiceName, apiKey, targetModel);
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
+    
+    if (isDev) {
+      // 本地开发：走 Vite 代理的 WebSocket 直连模式
+      console.log(`[TTS Router] → 开发环境: WebSocket 代理合成 (Qwen3 Realtime)`);
+      return await synthesizeQwen3RealtimeContinuous(sections, voiceName, apiKey, targetModel);
+    } else {
+      // 生产环境：走 Vercel Serverless Function 中转
+      console.log(`[TTS Router] → 生产环境: Serverless 中转合成 (Qwen3 via API)`);
+      return await synthesizeQwen3ViaApi(sections, voiceName, apiKey, targetModel);
+    }
   } else {
     // CosyVoice 为 HTTP 接口依然使用原本的循环合并模式
     console.log(`[TTS Router] → 使用标准分段合成 (CosyVoice HTTP)`);

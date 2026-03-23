@@ -12,10 +12,13 @@
     "@google/genai": "^1.41.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/ws": "^8.18.1",
+    "@vercel/node": "^5.6.18",
     "@vitejs/plugin-react": "^5.0.0",
     "dotenv": "^17.3.1",
     "typescript": "~5.8.2",
