@@ -946,7 +946,8 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {result && (
+          {/* 渲染结果 - 仅在闲置或完成状态下显示，避免编辑/生成过程中出现旧结果 */}
+          {(status === GenerationStatus.IDLE || status === GenerationStatus.COMPLETED) && result && (
             <div className="glass p-10 md:p-16 rounded-[4rem] shadow-2xl shadow-indigo-100/50 relative overflow-hidden group">
               {/* 可视化背景 */}
               <VisualAmbience
