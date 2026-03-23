@@ -187,12 +187,12 @@ export const QWEN_VOICES = [
   { id: 'longcheng', name: '儒雅稳重 (龙诚)', gender: 'male', model: 'cosyvoice-v1' },
   { id: 'longfei', name: '清朗男声 (龙飞)', gender: 'male', model: 'cosyvoice-v1' },
   
-  // —— Qwen3-TTS Instruct-Flash-Realtime 官方音色 ——
-  // 参考: https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
-  { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  // —— Qwen3-TTS Instruct-Flash 官方音色 ——
+  // 使用与 CosyVoice 相同的标准 inference 协议端点渲染
+  { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash' },
+  { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash' },
+  { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash' },
+  { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash' },
 ];
 
 export const MEDITATION_PRESETS = [
