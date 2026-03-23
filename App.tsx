@@ -144,6 +144,7 @@ const App: React.FC = () => {
   const [showStats, setShowStats] = useState(false);
   const [showCourses, setShowCourses] = useState(false);
   const [editingScript, setEditingScript] = useState<MeditationScript | null>(null);
+  const [sourceMode, setSourceMode] = useState<'ai' | 'manual'>('ai');
   const [completedDays, setCompletedDays] = useState<Record<string, number[]>>(
     () => {
       try {
@@ -328,18 +329,27 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!theme) return;
     if (!currentApiKey) {
       setShowSettings(true);
       return;
     }
-    try {
-      console.log(">>> 开始生成文稿 <<<");
-      await generateAIScript(theme);
-    } catch (e: any) {
-      console.error("文稿生成异常:", e);
-      setErrorInfo(e.message || "文稿生成失败");
-      setStatus(GenerationStatus.ERROR);
+
+    if (sourceMode === 'ai') {
+      if (!theme) return;
+      try {
+        console.log(">>> 开始生成文稿 <<<");
+        await generateAIScript(theme);
+      } catch (e: any) {
+        console.error("文稿生成异常:", e);
+        setErrorInfo(e.message || "文稿生成失败");
+        setStatus(GenerationStatus.ERROR);
+      }
+    } else { // manual mode
+      // In manual mode, clicking generate should open the editor with an empty script
+      // or the last manually entered script if available.
+      // For now, we'll just open an empty editor.
+      setEditingScript(parseTextToScript("")); // Start with an empty script for manual editing
+      setStatus(GenerationStatus.EDITING);
     }
   };
 
@@ -414,19 +424,6 @@ const App: React.FC = () => {
         }}
       />
 
-      {/* 编辑器模态框 */}
-      {status === GenerationStatus.EDITING && editingScript && (
-        <ScriptEditor 
-          script={editingScript}
-          onSave={(updated) => synthesizeAndMix(updated)}
-          onCancel={() => {
-            setEditingScript(null);
-            setStatus(GenerationStatus.IDLE);
-          }}
-          isProcessing={status === GenerationStatus.VOICING || status === GenerationStatus.MIXING}
-        />
-      )}
-
       {/* 背景动态装饰 */}
       <div className="fixed inset-0 -z-10 bg-[#f9fafc] dark:bg-slate-950 overflow-hidden transition-colors duration-500">
         <div className="absolute top-[-10%] right-[-5%] w-[600px] h-[600px] bg-indigo-100/40 dark:bg-indigo-900/10 rounded-full blur-[100px] breathing-glow"></div>
@@ -469,99 +466,127 @@ const App: React.FC = () => {
             </h2>
 
             <div className="space-y-12">
-              {/* Step 1: Content */}
+              {/* Step 1: Content Source Mode Toggle */}
               <section className="relative">
                 <div className="flex items-center gap-3 mb-6">
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black shadow-lg shadow-indigo-200 dark:shadow-none">1</span>
                   <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
-                    灵感与内容 / <span className="text-slate-400 font-light">Content Source</span>
+                    内容来源选择 / <span className="text-slate-400 font-light">Content Mode</span>
                   </label>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {MEDITATION_PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => applyPreset(p.prompt)}
-                      className="px-3 py-1.5 rounded-full bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100/50 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-[9px] font-bold hover:bg-indigo-600 hover:text-white transition-all"
-                    >
-                      {p.icon} {p.label}
-                    </button>
-                  ))}
+                <div className="flex p-1.5 bg-slate-100/50 dark:bg-slate-800/50 rounded-2xl mb-8">
+                  <button 
+                    onClick={() => setSourceMode('ai')}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-2 ${sourceMode === 'ai' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" /> AI 智能构思
+                  </button>
+                  <button 
+                    onClick={() => setSourceMode('manual')}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-2 ${sourceMode === 'manual' ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" /> 纯文稿合成
+                  </button>
                 </div>
 
-                <textarea
-                  className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 dark:ring-slate-800 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 placeholder:text-slate-300 text-sm shadow-inner"
-                  rows={3}
-                  placeholder="用您最舒适的语言描述冥想目标..."
-                  value={theme}
-                  onChange={(e) => {
-                    setTheme(e.target.value);
-                    if (status === GenerationStatus.ERROR)
-                      setStatus(GenerationStatus.IDLE);
-                  }}
-                />
+                {sourceMode === 'ai' ? (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {MEDITATION_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => applyPreset(p.prompt)}
+                          className="px-3 py-1.5 rounded-full bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100/50 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-[9px] font-bold hover:bg-indigo-600 hover:text-white transition-all"
+                        >
+                          {p.icon} {p.label}
+                        </button>
+                      ))}
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4 mt-6">
-                  <button 
-                    onClick={() => {
-                      const text = prompt("请输入或粘贴您的冥想词内容：");
-                      if (text) handleManualInput(text);
-                    }}
-                    className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/40 dark:bg-slate-800/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/30 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all uppercase tracking-wider"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" /> 粘贴文本
-                  </button>
-                  <label className="flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/40 dark:bg-slate-800/40 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/30 text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all uppercase tracking-wider cursor-pointer">
-                    <input 
-                      type="file" 
-                      accept=".txt" 
-                      className="hidden" 
+                    <textarea
+                      className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 dark:ring-slate-800 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 placeholder:text-slate-300 text-sm shadow-inner"
+                      rows={3}
+                      placeholder="用您最舒适的语言描述冥想目标，AI 将为您编写长文稿..."
+                      value={theme}
                       onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => handleManualInput(ev.target?.result as string);
-                          reader.readAsText(file);
-                        }
+                        setTheme(e.target.value);
+                        if (status === GenerationStatus.ERROR)
+                          setStatus(GenerationStatus.IDLE);
                       }}
                     />
-                    <Download className="w-3.5 h-3.5 rotate-180" /> 上传文稿
-                  </label>
-                </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
+                    <p className="text-[10px] text-slate-400 leading-relaxed italic mb-4 font-light">
+                      直接输入或上传您已准备好的冥想词，跳过 AI 生成步骤。
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={() => {
+                          const text = prompt("请输入或粘贴您的冥想词内容：");
+                          if (text) handleManualInput(text);
+                        }}
+                        className="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900 hover:bg-indigo-50/30 transition-all group"
+                      >
+                        <MessageSquare className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 mb-2" />
+                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-widest">粘贴文本</span>
+                      </button>
+                      <label className="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900 hover:bg-indigo-50/30 transition-all group cursor-pointer">
+                        <input 
+                          type="file" 
+                          accept=".txt" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (ev) => handleManualInput(ev.target?.result as string);
+                              reader.readAsText(file);
+                            }
+                          }}
+                        />
+                        <Download className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 mb-2 rotate-180" />
+                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-widest">上传文档</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </section>
 
-              {/* Step 2: Settings */}
+              {/* Step 2: Settings (Partial hide if manual?) */}
               <section className="relative">
                 <div className="flex items-center gap-3 mb-6">
                   <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black">2</span>
                   <label className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
-                    冥想参数 / <span className="text-slate-400 font-light">Custom Settings</span>
+                    {sourceMode === 'ai' ? '文稿生成参数 / AI Params' : '可选全局参数 / Optional'}
                   </label>
                 </div>
 
                 <div className="space-y-6">
-                  <div>
-                    <div className="text-[9px] text-slate-400 font-bold mb-3 uppercase tracking-wider">⏱ 疗愈时长</div>
-                    <div className="flex gap-2">
-                      {DURATION_OPTIONS.map((d) => (
-                        <button
-                          key={d.id}
-                          onClick={() => setSelectedDuration(d.id)}
-                          className={`flex-1 flex flex-col items-center p-3 rounded-2xl border transition-all ${
-                            selectedDuration === d.id
-                              ? "bg-indigo-50 border-indigo-200 shadow-sm"
-                              : "bg-white/40 border-slate-50 hover:border-indigo-100"
-                          }`}
-                        >
-                          <span className="text-lg mb-0.5">{d.icon}</span>
-                          <span className="text-[10px] font-bold text-slate-600">{d.label}</span>
-                        </button>
-                      ))}
+                  {sourceMode === 'ai' && (
+                    <div className="animate-in fade-in slide-in-from-top-2">
+                      <div className="text-[9px] text-slate-400 font-bold mb-3 uppercase tracking-wider">⏱ 疗愈时长</div>
+                      <div className="flex gap-2">
+                        {DURATION_OPTIONS.map((d) => (
+                          <button
+                            key={d.id}
+                            onClick={() => setSelectedDuration(d.id)}
+                            className={`flex-1 flex flex-col items-center p-3 rounded-2xl border transition-all ${
+                              selectedDuration === d.id
+                                ? "bg-indigo-50 border-indigo-200 shadow-sm"
+                                : "bg-white/40 border-slate-50 hover:border-indigo-100"
+                            }`}
+                          >
+                            <span className="text-lg mb-0.5">{d.icon}</span>
+                            <span className="text-[10px] font-bold text-slate-600">{d.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="pt-2">
+                    <div className="pt-2">
                     <button
                       onClick={() => setShowPersonalization(!showPersonalization)}
                       className="w-full flex items-center justify-between py-2 px-4 rounded-xl bg-slate-50/50 dark:bg-slate-800/30 text-[10px] font-bold text-slate-500 hover:text-indigo-500 transition-all"
@@ -762,7 +787,8 @@ const App: React.FC = () => {
                       status === GenerationStatus.COMPLETED ||
                       status === GenerationStatus.ERROR ? (
                       <>
-                        <Sparkles className="w-5 h-5 mr-3" /> 开始构思文稿
+                        <Sparkles className="w-5 h-5 mr-3" /> 
+                        {sourceMode === 'ai' ? 'AI 创作文稿草案' : '进入文稿编辑器'}
                       </>
                     ) : (
                       <>
@@ -802,7 +828,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 预览区 */}
         <div className="lg:col-span-7 order-1 lg:order-2 self-start sticky top-10">
           {status === GenerationStatus.IDLE && !result && (
             <div className="glass p-16 rounded-[4rem] text-center border-dashed border-2 border-indigo-100/50 flex flex-col items-center">
@@ -813,10 +838,25 @@ const App: React.FC = () => {
                 准备好开始了吗？
               </h3>
               <p className="text-slate-300 text-sm max-w-xs leading-relaxed">
-                描述您的心境，让 AI 为您编织
-                <br />
-                长达 20 分钟的深度沉浸式冥想。
+                {sourceMode === 'ai' 
+                  ? "在左侧描述您的心境，让 AI 为您编织深度沉浸式冥想。" 
+                  : "在左侧输入或上传文稿，我们将为您转化为高品质音频。"}
               </p>
+            </div>
+          )}
+
+          {/* 文稿编辑器 - 现在作为主视图的一部分 */}
+          {status === GenerationStatus.EDITING && editingScript && (
+            <div className="animate-in fade-in zoom-in-95 duration-500">
+              <ScriptEditor 
+                script={editingScript}
+                onSave={(updated) => synthesizeAndMix(updated)}
+                onCancel={() => {
+                  setEditingScript(null);
+                  setStatus(GenerationStatus.IDLE);
+                }}
+                isProcessing={status === GenerationStatus.VOICING || status === GenerationStatus.MIXING}
+              />
             </div>
           )}
 

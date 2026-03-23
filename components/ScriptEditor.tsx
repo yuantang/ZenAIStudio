@@ -70,11 +70,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const estDuration = localScript.sections.reduce((sum, s) => sum + (s.content.length * 0.4) + s.pauseSeconds, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel}></div>
-      
-      <div className="relative w-full max-w-5xl max-h-[90vh] glass bg-white/90 dark:bg-slate-900/90 rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border border-white/50">
-        {/* Header */}
+    <div className="relative w-full h-full glass bg-white/90 dark:bg-slate-900/90 rounded-[3rem] shadow-xl flex flex-col overflow-hidden border border-white/50 animate-in fade-in zoom-in-95 duration-500">
+      {/* Header */}
         <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center">
@@ -210,6 +207,5 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
