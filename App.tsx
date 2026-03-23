@@ -145,6 +145,7 @@ const App: React.FC = () => {
   const [showCourses, setShowCourses] = useState(false);
   const [editingScript, setEditingScript] = useState<MeditationScript | null>(null);
   const [sourceMode, setSourceMode] = useState<'ai' | 'manual'>('ai');
+  const [manualText, setManualText] = useState("");
   const [completedDays, setCompletedDays] = useState<Record<string, number[]>>(
     () => {
       try {
@@ -345,11 +346,8 @@ const App: React.FC = () => {
         setStatus(GenerationStatus.ERROR);
       }
     } else { // manual mode
-      // In manual mode, clicking generate should open the editor with an empty script
-      // or the last manually entered script if available.
-      // For now, we'll just open an empty editor.
-      setEditingScript(parseTextToScript("")); // Start with an empty script for manual editing
-      setStatus(GenerationStatus.EDITING);
+      if (!manualText.trim()) return;
+      handleManualInput(manualText);
     }
   };
 
@@ -518,21 +516,16 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
-                    <p className="text-[10px] text-slate-400 leading-relaxed italic mb-4 font-light">
-                      直接输入或上传您已准备好的冥想词，跳过 AI 生成步骤。
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <button 
-                        onClick={() => {
-                          const text = prompt("请输入或粘贴您的冥想词内容：");
-                          if (text) handleManualInput(text);
-                        }}
-                        className="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900 hover:bg-indigo-50/30 transition-all group"
-                      >
-                        <MessageSquare className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 mb-2" />
-                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-widest">粘贴文本</span>
-                      </button>
-                      <label className="flex flex-col items-center justify-center p-6 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-900 hover:bg-indigo-50/30 transition-all group cursor-pointer">
+                    <textarea
+                      className="w-full px-6 py-5 rounded-[1.5rem] border-none ring-1 ring-slate-100 dark:ring-slate-800 focus:ring-2 focus:ring-indigo-400 outline-none transition-all bg-white/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 placeholder:text-slate-300 text-sm shadow-inner"
+                      rows={8}
+                      placeholder="在此处粘贴您已准备好的全篇冥想词内容..."
+                      value={manualText}
+                      onChange={(e) => setManualText(e.target.value)}
+                    />
+                    
+                    <div className="flex items-center justify-between px-2">
+                       <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-indigo-500 transition-colors">
                         <input 
                           type="file" 
                           accept=".txt" 
@@ -541,14 +534,20 @@ const App: React.FC = () => {
                             const file = e.target.files?.[0];
                             if (file) {
                               const reader = new FileReader();
-                              reader.onload = (ev) => handleManualInput(ev.target?.result as string);
+                              reader.onload = (ev) => setManualText(ev.target?.result as string);
                               reader.readAsText(file);
                             }
                           }}
                         />
-                        <Download className="w-6 h-6 text-slate-300 group-hover:text-indigo-500 mb-2 rotate-180" />
-                        <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 uppercase tracking-widest">上传文档</span>
+                        <Download className="w-3.5 h-3.5 rotate-180" /> 
+                        <span className="text-[10px] font-bold uppercase tracking-wider">从文件导入 (.txt)</span>
                       </label>
+                      <button 
+                        onClick={() => setManualText("")}
+                        className="text-[10px] font-bold text-slate-300 hover:text-red-400 transition-colors uppercase tracking-wider"
+                      >
+                        清空文本
+                      </button>
                     </div>
                   </div>
                 )}
