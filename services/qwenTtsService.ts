@@ -81,55 +81,34 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
-    const ws = new WebSocket(url);
+    // 采用更标准安全的 Sec-WebSocket-Protocol 认证方式
+    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}`;
+    const ws = new WebSocket(url, ['api-key', apiKey]);
     ws.binaryType = 'arraybuffer';
     
     const audioChunks: Uint8Array[] = [];
     let eventId = 0;
 
+    // 超时保护：15秒建立不起来就放弃
+    const connectionTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        ws.close();
+        reject(new Error('Qwen3-TTS 连接超时，请检查网络或 API Key 是否有效'));
+      }
+    }, 15000);
+
     const sendEvent = (event: any) => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('[Qwen3 Realtime] 尝试发送消息但连接已关闭:', event.type);
+        return;
+      }
       event.event_id = `evt_${++eventId}_${Date.now()}`;
       ws.send(JSON.stringify(event));
     };
 
     ws.onopen = () => {
-      console.log('[Qwen3 Realtime] 长会话连接已建立，配置通用参数...');
-      sendEvent({
-        type: 'session.update',
-        session: {
-          mode: 'server_commit',
-          voice: voiceId,
-          language_type: 'Auto',
-          response_format: 'pcm',
-          sample_rate: 24000,
-          speed: 0.85,
-          pitch: -0.05,
-          ...(model.includes('instruct') ? {
-            instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
-          } : {})
-        }
-      });
-      
-      // 等待 session 配置生效后，一次性发送全部文本文本缓冲
-      setTimeout(() => {
-        // 利用换行和省略号暗示段落间的长停顿，让 Instruct 模型理解上下文
-        const fullText = sections.map(s => s.text).join('\n\n……\n\n');
-        
-        console.log(`[Qwen3 Realtime] 推送全脚本流，总长度: ${fullText.length} 字符`);
-        
-        // 建议单次发送文本不要过长，我们保守按 500 字一截发送 append，虽然底层是 server_commit 会自动拼接合并
-        for (let i = 0; i < fullText.length; i += 500) {
-          sendEvent({
-            type: 'input_text_buffer.append',
-            text: fullText.slice(i, i + 500)
-          });
-        }
-        
-        // 所有文本发送完毕，标记会话结束。
-        // 服务器内部将完成缓冲中剩余的识别及合成，最终返回 session.finished
-        sendEvent({ type: 'session.finish' });
-      }, 50);
+      clearTimeout(connectionTimeout);
+      console.log('[Qwen3 Realtime] 物理连接已建立，等待 session.created...');
     };
 
     ws.onmessage = (event) => {
@@ -137,14 +116,51 @@ export const synthesizeQwen3RealtimeContinuous = async (
         const msg = JSON.parse(event.data);
         const eventType = msg.type;
 
-        if (eventType === 'error') {
-          console.error('[Qwen3 Realtime] 服务端返回致命错误:', msg.error);
+        // 核心事件：会话已创建
+        if (eventType === 'session.created') {
+          console.log('[Qwen3 Realtime] ← session.created，发送配置参数...');
+          sendEvent({
+            type: 'session.update',
+            session: {
+              mode: 'server_commit',
+              voice: voiceId,
+              language_type: 'Auto',
+              response_format: 'pcm',
+              sample_rate: 24000,
+              speed: 0.85,
+              pitch: -0.05,
+              ...(model.includes('instruct') ? {
+                instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
+              } : {})
+            }
+          });
+        }
+
+        // 核心事件：参数已更新
+        else if (eventType === 'session.updated') {
+          console.log('[Qwen3 Realtime] ← session.updated，开始推送文稿流...');
+          const fullText = sections.map(s => s.text).join('\n\n……\n\n');
+          
+          // 分段推送，避免单包过大
+          for (let i = 0; i < fullText.length; i += 500) {
+            sendEvent({
+              type: 'input_text_buffer.append',
+              text: fullText.slice(i, i + 500)
+            });
+          }
+          
+          // 标记发送完毕
+          sendEvent({ type: 'session.finish' });
+        }
+
+        else if (eventType === 'error') {
+          console.error('[Qwen3 Realtime] 服务端业务错误:', msg.error);
           ws.close();
-          reject(new Error(`Qwen3-TTS 错误: ${JSON.stringify(msg.error)}`));
+          reject(new Error(`Qwen3-TTS 业务错误: ${msg.error?.message || JSON.stringify(msg.error)}`));
           return;
         }
 
-        if (eventType === 'response.audio.delta') {
+        else if (eventType === 'response.audio.delta') {
           const b64 = msg.delta || '';
           if (b64) {
             const binary = atob(b64);
@@ -155,17 +171,14 @@ export const synthesizeQwen3RealtimeContinuous = async (
             audioChunks.push(bytes);
           }
         } 
-        else if (eventType === 'response.done') {
-          // 当前单句合成完毕，但由于我们已发送 session.finish，耐心等待最终事件即可
-          // 不再基于 done 做段落映射，避免越界异常
-        } 
+        
         else if (eventType === 'session.finished') {
-          console.log('[Qwen3 Realtime] session.finished，所有长流音频接收完毕');
+          console.log('[Qwen3 Realtime] session.finished，合成全流程完成');
           ws.close();
           
           const totalLen = audioChunks.reduce((s, c) => s + c.length, 0);
           if (totalLen === 0) {
-            reject(new Error('Qwen3-TTS 返回了空音频，可能受到了内容拦截或并发超限'));
+            reject(new Error('Qwen3-TTS 返回了空音频，可能是触发了内容安全过滤或并发受限'));
             return;
           }
           const merged = new Uint8Array(totalLen);
@@ -178,11 +191,14 @@ export const synthesizeQwen3RealtimeContinuous = async (
 
     ws.onerror = (e) => {
       console.error('[Qwen3 Realtime] WebSocket 物理连接错误:', e);
-      reject(new Error('Qwen3-TTS Realtime WebSocket 连接断开或失败'));
+      reject(new Error('Qwen3-TTS WebSocket 握手失败，可能是 API Key 错误或网络拦截'));
     };
 
     ws.onclose = (e) => {
-      console.log(`[Qwen3 Realtime] 连接退出: code=${e.code}`);
+      console.log(`[Qwen3 Realtime] 连接退出: code=${e.code}, reason=${e.reason || '无'}`);
+      if (e.code === 4001 || e.code === 4002) {
+        reject(new Error(`Qwen3-TTS 鉴权失败 (Code: ${e.code})，请检查 API Key`));
+      }
     };
   });
 };
