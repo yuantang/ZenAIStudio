@@ -13,6 +13,16 @@ export default defineConfig(({ mode }) => {
             target: 'https://dashscope.aliyuncs.com',
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/dashscope/, '')
+          },
+          // WebSocket 代理：解决浏览器无法发送 Authorization Header 导致的 1006 握手失败
+          '/ws/dashscope': {
+            target: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+            ws: true,
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/ws\/dashscope/, ''),
+            headers: {
+              'Authorization': `Bearer ${env.VITE_DASHSCOPE_API_KEY}`
+            }
           }
         }
       },

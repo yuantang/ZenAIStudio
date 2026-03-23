@@ -81,9 +81,13 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    // 核心修复：移除 URL 中的 model 参数，仅保留 api_key（某些环境下 model 参数会导致握手失败）
-    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?api_key=${apiKey}`;
-    const ws = new WebSocket(url);
+    // 核心重构：利用 Vite 代理转发 WebSocket（ws:///ws/dashscope），由代理服务器自动注入 Authorization 鉴权头。
+    // 这能 100% 解决浏览器端无法设置 Header 导致的 1006 握手失败，且更安全。
+    const isSecure = window.location.protocol === 'https:';
+    const proxyUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope`;
+    
+    console.log(`[Qwen3 Realtime] 通过本地安全代理建立连接: ${proxyUrl}`);
+    const ws = new WebSocket(proxyUrl);
     ws.binaryType = 'arraybuffer';
     
     const audioChunks: Uint8Array[] = [];
