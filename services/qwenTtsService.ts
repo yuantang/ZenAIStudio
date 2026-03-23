@@ -81,13 +81,22 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    // 通过 Vite 代理转发 WebSocket，代理自动注入 Authorization 鉴权头
-    // 关键：model 必须作为查询参数传递给 DashScope，否则服务端会拒绝连接
-    const isSecure = window.location.protocol === 'https:';
-    const proxyUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}`;
+    // 环境自适应连接策略：
+    // - 本地开发：走 Vite 代理（代理自动注入 Authorization Header）
+    // - 生产部署（Vercel 等）：直连 DashScope（URL 中携带 api_key）
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
     
-    console.log(`[Qwen3 Realtime] 通过代理建立连接: ${proxyUrl}`);
-    const ws = new WebSocket(proxyUrl);
+    let wsUrl: string;
+    if (isDev) {
+      const isSecure = window.location.protocol === 'https:';
+      wsUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}`;
+      console.log(`[Qwen3 Realtime] 开发环境 → 通过本地代理: ${wsUrl}`);
+    } else {
+      wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
+      console.log(`[Qwen3 Realtime] 生产环境 → 直连 DashScope`);
+    }
+    
+    const ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
     
     const audioChunks: Uint8Array[] = [];
