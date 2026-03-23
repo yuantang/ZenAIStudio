@@ -81,7 +81,8 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
+    // 核心修复：移除 URL 中的 model 参数，仅保留 api_key（某些环境下 model 参数会导致握手失败）
+    const url = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?api_key=${apiKey}`;
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     
@@ -94,10 +95,12 @@ export const synthesizeQwen3RealtimeContinuous = async (
     };
 
     ws.onopen = () => {
-      console.log('[Qwen3 Realtime] 长会话连接已建立，配置通用参数...');
+      console.log('[Qwen3 Realtime] 物理连接已开启，正在初始化 session...');
+      // 官方文档建议在 session.update 中明确指定 model
       sendEvent({
         type: 'session.update',
         session: {
+          model: model, // 在此处声明模型，而非 URL
           mode: 'server_commit',
           voice: voiceId,
           language_type: 'Auto',
