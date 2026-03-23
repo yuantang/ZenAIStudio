@@ -81,12 +81,12 @@ export const synthesizeQwen3RealtimeContinuous = async (
   model: string = 'qwen3-tts-instruct-flash-realtime'
 ): Promise<Uint8Array> => {
   return new Promise((resolve, reject) => {
-    // 核心重构：利用 Vite 代理转发 WebSocket（ws:///ws/dashscope），由代理服务器自动注入 Authorization 鉴权头。
-    // 这能 100% 解决浏览器端无法设置 Header 导致的 1006 握手失败，且更安全。
+    // 通过 Vite 代理转发 WebSocket，代理自动注入 Authorization 鉴权头
+    // 关键：model 必须作为查询参数传递给 DashScope，否则服务端会拒绝连接
     const isSecure = window.location.protocol === 'https:';
-    const proxyUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope`;
+    const proxyUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}`;
     
-    console.log(`[Qwen3 Realtime] 通过本地安全代理建立连接: ${proxyUrl}`);
+    console.log(`[Qwen3 Realtime] 通过代理建立连接: ${proxyUrl}`);
     const ws = new WebSocket(proxyUrl);
     ws.binaryType = 'arraybuffer';
     
