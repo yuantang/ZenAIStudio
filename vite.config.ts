@@ -44,17 +44,30 @@ export default defineConfig(({ mode }) => {
                   headers: { 'Authorization': `Bearer ${apiKey}` }
                 });
 
+                // 消息缓冲队列：在上游 OPEN 之前暂存客户端消息
+                const pendingMessages: any[] = [];
+                let upstreamReady = false;
+
                 upstream.on('open', () => {
                   console.log(`[WS Bridge] ✅ 已桥接到 DashScope (model=${model})`);
+                  upstreamReady = true;
+                  // flush 缓冲区
+                  for (const msg of pendingMessages) {
+                    upstream.send(msg);
+                  }
+                  pendingMessages.length = 0;
                 });
 
-                // 双向桥接：客户端 ↔ DashScope
+                // 双向桥接：客户端 → DashScope（带缓冲）
                 clientWs.on('message', (data) => {
-                  if (upstream.readyState === WebSocket.OPEN) {
+                  if (upstreamReady && upstream.readyState === WebSocket.OPEN) {
                     upstream.send(data);
+                  } else {
+                    pendingMessages.push(data);
                   }
                 });
 
+                // DashScope → 客户端
                 upstream.on('message', (data) => {
                   if (clientWs.readyState === WebSocket.OPEN) {
                     clientWs.send(data);
@@ -64,12 +77,12 @@ export default defineConfig(({ mode }) => {
                 // 错误与关闭处理
                 upstream.on('error', (err) => {
                   console.error(`[WS Bridge] 上游错误:`, err.message);
-                  clientWs.close(4002, 'Upstream error');
+                  if (clientWs.readyState === WebSocket.OPEN) clientWs.close(4002, 'Upstream error');
                 });
 
                 clientWs.on('error', (err) => {
                   console.error(`[WS Bridge] 客户端错误:`, err.message);
-                  upstream.close();
+                  if (upstream.readyState === WebSocket.OPEN) upstream.close();
                 });
 
                 upstream.on('close', () => {
