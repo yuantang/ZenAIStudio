@@ -19,7 +19,14 @@ export default defineConfig(({ mode }) => {
             target: 'wss://dashscope.aliyuncs.com',
             ws: true,
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/ws\/dashscope/, '/api-ws/v1/realtime'),
+            rewrite: (path) => {
+              let newPath = path.replace(/^\/ws\/dashscope/, '/api-ws/v1/realtime');
+              // 关键修复：清理 URL 中的 api_key 以免引发阿里云网关的双重鉴权报错 (Invalid frame header)
+              newPath = newPath.replace(/[?&]api_key=[^&]*/, '');
+              // 如果只剩下一个问号，也清理掉
+              if (newPath.endsWith('?')) newPath = newPath.slice(0, -1);
+              return newPath;
+            },
             configure: (proxy) => {
               proxy.on('proxyReqWs', (proxyReq, req) => {
                 try {
