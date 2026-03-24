@@ -14,15 +14,24 @@ export default defineConfig(({ mode }) => {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/dashscope/, '')
           },
-          // WebSocket 代理：浏览器无法设置 Authorization Header，由代理自动注入
+          // WebSocket 代理：支持从 querystring 或 env 动态注入 Authorization
           '/ws/dashscope': {
             target: 'wss://dashscope.aliyuncs.com',
             ws: true,
             changeOrigin: true,
-            // /ws/dashscope?model=xxx → /api-ws/v1/realtime?model=xxx（查询参数自动透传）
             rewrite: (path) => path.replace(/^\/ws\/dashscope/, '/api-ws/v1/realtime'),
-            headers: {
-              'Authorization': `Bearer ${env.VITE_DASHSCOPE_API_KEY}`
+            configure: (proxy) => {
+              proxy.on('proxyReqWs', (proxyReq, req) => {
+                try {
+                  const url = new URL(req.url || '', 'http://localhost');
+                  const apiKey = url.searchParams.get('api_key') || env.VITE_DASHSCOPE_API_KEY;
+                  if (apiKey) {
+                    proxyReq.setHeader('Authorization', `Bearer ${apiKey}`);
+                  }
+                } catch (err) {
+                  console.error('Ws proxy header error:', err);
+                }
+              });
             }
           }
         }

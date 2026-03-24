@@ -166,7 +166,7 @@ const synthesizeQwen3ViaApi = async (
     return merged;
   };
 
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 2; // API 并发降为 2 规避后端瞬时压力
   const results: Uint8Array[] = new Array(sections.length);
   const queue = sections.map((s, i) => ({ s, i }));
   
@@ -219,7 +219,7 @@ export const synthesizeQwen3RealtimeContinuous = async (
       let wsUrl: string;
       if (isDev) {
         const isSecure = window.location.protocol === 'https:';
-        wsUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}`;
+        wsUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}&api_key=${apiKey}`;
       } else {
         wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
       }
@@ -315,7 +315,7 @@ export const synthesizeQwen3RealtimeContinuous = async (
     return merged;
   };
 
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 1; // 免费/标准 API Key 极易在建立 WS 获取鉴权时抛出 429 导致连接失败，本地开发严格降级为串行 1 线程并发
   const results: Uint8Array[] = new Array(sections.length);
   const queue = sections.map((s, i) => ({ s, i }));
   
