@@ -81,45 +81,87 @@ const synthesizeQwen3ViaApi = async (
   apiKey: string,
   model: string
 ): Promise<Uint8Array> => {
-  const fullText = sections.map(s => s.text).join('\n\n……\n\n');
   const SAMPLE_RATE = 24000;
   const BYTES_PER_SAMPLE = 2;
   
-  console.log(`[Qwen3 API] 调用 Serverless 中转，文本长度: ${fullText.length}`);
+  console.log(`[Qwen3 API] 开始分段并行合成，总段数: ${sections.length}`);
   
-  const response = await fetch('/api/tts-realtime', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: fullText,
-      voice: voiceId,
-      model,
-      apiKey,
-      instructions: model.includes('instruct')
-        ? '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
-        : undefined,
-    }),
+  // 1. 定义单段下载函数
+  const fetchSegment = async (text: string, index: number) => {
+    console.log(`[Qwen3 API] 请求段落 ${index + 1}/${sections.length} (${text.length} 字)...`);
+    const response = await fetch('/api/tts-realtime', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voice: voiceId,
+        model,
+        apiKey,
+        instructions: model.includes('instruct')
+          ? '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
+          : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      throw new Error(`段落 ${index + 1} 合成失败: ${errBody.error || response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (!result.success || !result.audio) {
+      throw new Error(`段落 ${index + 1} 返回格式异常`);
+    }
+
+    // 解码 base64 PCM 数据
+    const binary = atob(result.audio);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  // 2. 控制并发（防止瞬间压力过大，由于是 Vercel Serverless，保持 3-5 个并发即可）
+  const CONCURRENCY = 3;
+  const results: Uint8Array[] = new Array(sections.length);
+  const queue = sections.map((s, i) => ({ s, i }));
+  
+  const workers = Array(CONCURRENCY).fill(null).map(async () => {
+    while (queue.length > 0) {
+      const task = queue.shift();
+      if (!task) break;
+      results[task.i] = await fetchSegment(task.s.text, task.i);
+    }
   });
 
-  if (!response.ok) {
-    const errBody = await response.json().catch(() => ({}));
-    throw new Error(`Serverless 合成失败: ${errBody.error || response.statusText}`);
+  await Promise.all(workers);
+
+  // 3. 按顺序合并音频，并插入静默
+  console.log(`[Qwen3 API] 所有段落合成完毕，正在前端拼接...`);
+  const audioChunks: Uint8Array[] = [];
+  
+  for (let i = 0; i < sections.length; i++) {
+    audioChunks.push(results[i]);
+    
+    // 只有在不是最后一段时插入静默
+    const pause = sections[i].pause;
+    if (pause > 0 && i < sections.length - 1) {
+      const silenceBytes = Math.ceil(SAMPLE_RATE * pause) * BYTES_PER_SAMPLE;
+      audioChunks.push(new Uint8Array(silenceBytes));
+    }
   }
 
-  const result = await response.json();
-  if (!result.success || !result.audio) {
-    throw new Error('Serverless 返回格式异常');
-  }
-
-  // 解码 base64 PCM 数据
-  const binary = atob(result.audio);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const totalLen = audioChunks.reduce((sum, c) => sum + c.length, 0);
+  const merged = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const chunk of audioChunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
   }
   
-  console.log(`[Qwen3 API] Serverless 合成成功: ${bytes.length} 字节`);
-  return bytes;
+  console.log(`[Qwen3 API] 音频拼装完成，总大小: ${merged.length} 字节`);
+  return merged;
 };
 
 // ─── Qwen3-TTS Realtime 新协议（仅本地开发使用）──────────────────────

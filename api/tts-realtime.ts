@@ -70,11 +70,11 @@ function synthesizeViaWebSocket(
       ws.send(JSON.stringify(event));
     };
 
-    // 超时保护
+    // 超时保护：分段后单段不应超过 45s
     const timeout = setTimeout(() => {
       ws.close();
-      reject(new Error('Qwen3-TTS 合成超时 (50s)'));
-    }, 50000);
+      reject(new Error('Qwen3-TTS 单段合成超时 (45s)'));
+    }, 45000);
 
     ws.on('open', () => {
       console.log('[tts-realtime] WebSocket 连接已建立');
