@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -n \"VITE,WS\" -c \"cyan,yellow\" \"vite\" \"node scripts/ws-proxy.mjs\"",
+    "ws-proxy": "node scripts/ws-proxy.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -20,6 +21,7 @@
     "@types/ws": "^8.18.1",
     "@vercel/node": "^5.6.18",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.3.1",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

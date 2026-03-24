@@ -217,11 +217,13 @@ export const synthesizeQwen3RealtimeContinuous = async (
     return new Promise((resolve, reject) => {
       // DashScope /realtime 端点仅支持 Authorization Header 鉴权（不支持 URL api_key 参数），
       // 而浏览器 WebSocket API 无法设置自定义 Header。
-      // 因此本地开发通过 Vite 的 WS 桥接中间件中转（见 vite.config.ts），
-      // 桥接层会提取 URL 中的 api_key 参数并以 Header 形式注入到上游连接。
+      // 本地开发：连接到 scripts/ws-proxy.mjs 独立代理进程（端口 3001，与 Vite 完全隔离）
+      // 生产环境：通过 Serverless API 中转（或 URL api_key 如果该端点支持）
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
+      // 独立代理进程固定在 3001 端口，与 Vite 的 3000 端口无关
+      const wsProxyHost = `${window.location.hostname}:3001`;
       const wsUrl = isLocal
-        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}&api_key=${apiKey}`
+        ? `ws://${wsProxyHost}/ws/dashscope?model=${model}&api_key=${apiKey}`
         : `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
 
       const ws = new WebSocket(wsUrl);
