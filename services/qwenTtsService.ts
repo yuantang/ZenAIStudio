@@ -215,9 +215,14 @@ export const synthesizeQwen3RealtimeContinuous = async (
   // 原子单次 WebSocket 请求
   const fetchSingleChunkWS = async (textChunk: string, chunkId: string): Promise<Uint8Array> => {
     return new Promise((resolve, reject) => {
-      // 直连 DashScope —— WebSocket 不受 CORS 限制，无需本地代理
-      // 与 CosyVoice (line 22) 使用完全相同的直连模式
-      const wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
+      // DashScope /realtime 端点仅支持 Authorization Header 鉴权（不支持 URL api_key 参数），
+      // 而浏览器 WebSocket API 无法设置自定义 Header。
+      // 因此本地开发通过 Vite 的 WS 桥接中间件中转（见 vite.config.ts），
+      // 桥接层会提取 URL 中的 api_key 参数并以 Header 形式注入到上游连接。
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
+      const wsUrl = isLocal
+        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}&api_key=${apiKey}`
+        : `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
 
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
