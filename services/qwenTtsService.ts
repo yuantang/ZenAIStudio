@@ -209,20 +209,15 @@ export const synthesizeQwen3RealtimeContinuous = async (
 ): Promise<Uint8Array> => {
   const SAMPLE_RATE = 24000;
   const BYTES_PER_SAMPLE = 2;
-  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
 
   console.log(`[Qwen3 Realtime] 开始分段并发 WS 合成，总段数: ${sections.length}`);
 
   // 原子单次 WebSocket 请求
   const fetchSingleChunkWS = async (textChunk: string, chunkId: string): Promise<Uint8Array> => {
     return new Promise((resolve, reject) => {
-      let wsUrl: string;
-      if (isDev) {
-        const isSecure = window.location.protocol === 'https:';
-        wsUrl = `${isSecure ? 'wss:' : 'ws:'}//${window.location.host}/ws/dashscope?model=${model}&api_key=${apiKey}`;
-      } else {
-        wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
-      }
+      // 直连 DashScope —— WebSocket 不受 CORS 限制，无需本地代理
+      // 与 CosyVoice (line 22) 使用完全相同的直连模式
+      const wsUrl = `wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=${model}&api_key=${apiKey}`;
 
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
@@ -370,17 +365,9 @@ export async function synthesizeWithQwen(
     .filter(s => s.text.length > 0);
 
   if (targetModel.includes('qwen3-tts') || targetModel.includes('qwen-tts')) {
-    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.');
-    
-    if (isDev) {
-      // 本地开发：走 Vite 代理的 WebSocket 直连模式 (现已支持分段并发)
-      console.log(`[TTS Router] → 开发环境: WebSocket 代理分段合成 (Qwen3 Realtime)`);
-      return await synthesizeQwen3RealtimeContinuous(sections, voiceName, apiKey, targetModel);
-    } else {
-      // 生产环境：走 Vercel Serverless Function 中转 (分段并发)
-      console.log(`[TTS Router] → 生产环境: Serverless 中转分段合成 (Qwen3 via API)`);
-      return await synthesizeQwen3ViaApi(sections, voiceName, apiKey, targetModel);
-    }
+    // Qwen3-TTS: 直连 DashScope WebSocket（WS 不受 CORS 限制，无需代理或 Serverless 中转）
+    console.log(`[TTS Router] → WebSocket 直连分段合成 (Qwen3 Realtime)`);
+    return await synthesizeQwen3RealtimeContinuous(sections, voiceName, apiKey, targetModel);
   } else {
     // CosyVoice 依然使用分段合成
     console.log(`[TTS Router] → 使用标准分段合成 (CosyVoice WebSocket)`);
