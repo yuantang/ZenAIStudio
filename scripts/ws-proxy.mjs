@@ -50,7 +50,9 @@ server.on('upgrade', (req, socket, head) => {
     console.log(`[WS Proxy] 正在连接 DashScope... model=${model}`);
 
     const upstream = new WebSocket(upstreamUrl, {
-      headers: { 'Authorization': `Bearer ${apiKey}` }
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      perMessageDeflate: false,  // 禁用压缩，避免帧格式协商问题
+      maxPayload: 0              // 禁用最大帧大小限制（防止 ws@8.x 无法解析 DashScope 超长 CLOSE 帧）
     });
 
     // 缓冲：在上游 OPEN 前暂存客户端消息

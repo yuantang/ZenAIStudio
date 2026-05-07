@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: '缺少必要参数: text, voice, apiKey' });
   }
 
-  const targetModel = model || 'qwen3-tts-instruct-flash-realtime';
+  const targetModel = model || 'qwen3-tts-instruct-flash-realtime-2026-01-22';
 
   try {
     const audioBuffer = await synthesizeViaWebSocket(text, voice, apiKey, targetModel, instructions);

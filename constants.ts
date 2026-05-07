@@ -189,10 +189,10 @@ export const QWEN_VOICES = [
   
   // —— Qwen3-TTS Instruct-Flash-Realtime 官方音色 ——
   // 参考: https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
-  { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime' },
-  { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime' },
+  { id: 'Seren', name: '晚安好梦 (小婉)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime-2026-01-22' },
+  { id: 'Serena', name: '温柔小姐姐 (苏瑶)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime-2026-01-22' },
+  { id: 'Ethan', name: '阳光温暖 (晨煦)', gender: 'male', model: 'qwen3-tts-instruct-flash-realtime-2026-01-22' },
+  { id: 'Maia', name: '知性温柔 (四月)', gender: 'female', model: 'qwen3-tts-instruct-flash-realtime-2026-01-22' },
 ];
 
 export const MEDITATION_PRESETS = [

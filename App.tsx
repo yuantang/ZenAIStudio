@@ -686,7 +686,7 @@ const App: React.FC = () => {
                               if (eng.id === "cosyvoice-v1") {
                                 setSelectedVoice(QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")[0].id);
                               } else if (eng.id === "qwen3-tts") {
-                                setSelectedVoice(QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime")[0].id);
+                                setSelectedVoice(QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime-2026-01-22")[0].id);
                               } else {
                                 setSelectedVoice(VOICES[0].id);
                               }
@@ -712,7 +712,7 @@ const App: React.FC = () => {
                         {(selectedEngine === "cosyvoice-v1"
                           ? QWEN_VOICES.filter((v) => v.model === "cosyvoice-v1")
                           : selectedEngine === "qwen3-tts"
-                            ? QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime")
+                            ? QWEN_VOICES.filter((v) => v.model === "qwen3-tts-instruct-flash-realtime-2026-01-22")
                             : VOICES
                         ).map((v) => (
                           <button

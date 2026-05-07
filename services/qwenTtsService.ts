@@ -205,7 +205,7 @@ export const synthesizeQwen3RealtimeContinuous = async (
   sections: { text: string; pause: number }[],
   voiceId: string,
   apiKey: string,
-  model: string = 'qwen3-tts-instruct-flash-realtime'
+  model: string = 'qwen3-tts-instruct-flash-realtime-2026-01-22'
 ): Promise<Uint8Array> => {
   const SAMPLE_RATE = 24000;
   const BYTES_PER_SAMPLE = 2;
@@ -247,9 +247,9 @@ export const synthesizeQwen3RealtimeContinuous = async (
             response_format: 'pcm',
             sample_rate: 24000,
             speed: 0.85,
-            pitch: -0.05,
+            pitch: -0.02, // 稍微接近 0，减少过度的电音感或压抑感
             ...(model.includes('instruct') ? {
-              instructions: '语速稍慢且节奏平稳，音调柔和自然，语气温暖亲切如好友倾诉，吐字清晰舒展，整体风格宁静治愈，保持前后语调高度一致。'
+              instructions: '【核心要求：语调绝对平稳一致】请使用极其平静、舒缓、无感情波动的语气。禁止任何剧烈的重音或语调起伏。语速慢而均匀。每一句话的开头和结尾都要保持一致的音高，确保多段音频拼接时听不出断层。整体风格如冥想引导，宁静温和。'
             } : {})
           }
         });
